@@ -1,0 +1,4016 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Plataforma de Gestão de Rotas — Logística</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .card-hover { transition: all 0.2s; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+    .tab-btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+    }
+
+    .tipo-rota-btn {
+      padding: 1.5rem;
+      border-radius: 0.75rem;
+      border: 2px solid #334155;
+      background: #0f172a;
+      text-align: center;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .tipo-rota-btn.active {
+      border-color: #10b981;
+      background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .tipo-rota-btn:hover:not(.active) {
+      border-color: #475569;
+      transform: translateY(-2px);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.8);
+      backdrop-filter: blur(4px);
+    }
+
+    .modal.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .modal-content {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      border: 1px solid #334155;
+      border-radius: 1rem;
+      padding: 2rem;
+      max-width: 900px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .modal-content::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .modal-content::-webkit-scrollbar-track {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+
+    .modal-content::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 4px;
+    }
+
+    .modal-content::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    .status-badge-aberto {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .status-badge-fechado {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .heatmap-cell {
+      display: inline-block;
+      width: 80px;
+      height: 80px;
+      margin: 4px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      transition: all 0.2s;
+    }
+
+    .heatmap-cell:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    /* Layout fullscreen */
+    #mainContainer {
+      padding: 1.5rem;
+      max-width: 100%;
+    }
+
+    #pageOperacional,
+    #pageCadastros,
+    #pageAnalytics {
+      max-width: 100%;
+      width: 100%;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 min-h-screen">
+  <div id="mainContainer" class="space-y-6">
+    <!-- HEADER -->
+    <header class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 class="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+            🚚 Sistema de Rotas V2.0 - FINAL CORRIGIDO
+          </h1>
+          <p class="text-slate-400 mt-1">✅ IDs Individuais por Stop + Salvamento Flexível + Edição Completa</p>
+        </div>
+        <div class="flex items-center gap-4">
+          <div id="userInfo" class="text-right hidden">
+            <div class="text-sm text-slate-400">Logado como</div>
+            <div id="userEmail" class="font-semibold"></div>
+          </div>
+          <button id="btnLogout" class="hidden px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 font-semibold">
+            Sair
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- STATUS -->
+    <div id="statusBox" class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center gap-3">
+        <div id="statusDot" class="w-3 h-3 rounded-full bg-yellow-400 animate-pulse"></div>
+        <div>
+          <div id="statusText" class="font-semibold">Carregando sistema...</div>
+          <div id="statusSub" class="text-sm text-slate-400"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGIN -->
+    <section id="loginCard" class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-8">
+      <h2 class="text-2xl font-bold mb-6">Acesso ao Sistema</h2>
+
+      <div class="grid md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">Email</label>
+          <input id="loginEmail" type="email"
+                 class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                 placeholder="seu@email.com" />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">Senha</label>
+          <input id="loginPassword" type="password"
+                 class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                 placeholder="••••••" />
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="btnLogin" class="flex-1 px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+          Entrar
+        </button>
+        <button id="btnSignup" class="flex-1 px-6 py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 font-semibold">
+          Criar Conta
+        </button>
+      </div>
+    </section>
+    <!-- APP -->
+    <section id="appCard" class="hidden space-y-6">
+
+      <!-- STATS -->
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-xl p-6 card-hover">
+          <div class="text-emerald-100 text-sm font-semibold">Motoristas</div>
+          <div id="countDrivers" class="text-3xl font-bold mt-2">-</div>
+        </div>
+        <div class="bg-gradient-to-br from-cyan-600 to-cyan-700 rounded-xl p-6 card-hover">
+          <div class="text-cyan-100 text-sm font-semibold">Sellers</div>
+          <div id="countSellers" class="text-3xl font-bold mt-2">-</div>
+        </div>
+        <div class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-6 card-hover">
+          <div class="text-purple-100 text-sm font-semibold">Saídas</div>
+          <div id="countSaidas" class="text-3xl font-bold mt-2">-</div>
+        </div>
+        <div class="bg-gradient-to-br from-amber-600 to-amber-700 rounded-xl p-6 card-hover">
+          <div class="text-amber-100 text-sm font-semibold">Milk Runs</div>
+          <div id="countMilkRuns" class="text-3xl font-bold mt-2">-</div>
+        </div>
+      </div>
+
+      <!-- TABS -->
+      <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-3">
+        <div class="flex gap-2 flex-wrap">
+          <button id="tabOperacional" class="tab-btn active">
+            📦 Operacional
+          </button>
+          <button id="tabCadastros" class="tab-btn">
+            📋 Cadastros
+          </button>
+          <button id="tabAnalytics" class="tab-btn">
+            📊 Analytics
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB: OPERACIONAL -->
+      <section id="pageOperacional" class="space-y-6">
+
+        <!-- CRIAR NOVA ROTA -->
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold">Nova Rota</h2>
+            <div class="flex gap-2">
+              <button id="btnRecarregar" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">
+                🔄 Recarregar
+              </button>
+              <button id="btnLimparForm" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">
+                🗑️ Limpar
+              </button>
+            </div>
+          </div>
+
+          <!-- DADOS BÁSICOS -->
+          <div class="grid md:grid-cols-3 gap-4 mb-6">
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">📅 Data</label>
+              <input id="rotaData" type="date"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">📍 SOC</label>
+              <select id="rotaSoc" class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+                <option value="">Selecione...</option>
+                <option value="SP2">SP2 - Santana do Parnaíba</option>
+                <option value="SP6">SP6 - Guarulhos</option>
+                <option value="SP7">SP7 - Louveira</option>
+                <option value="SP8">SP8 - São Bernardo do Campo</option>
+                <option value="RJ2">RJ2 - Duque de Caxias</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">🎯 Operação</label>
+              <select id="rotaOperacao" class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+                <option value="SP_CAPITAL">SP Capital</option>
+                <option value="SP_INTERIOR">SP Interior</option>
+                <option value="RJ">RJ</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- MOTORISTA -->
+          <div class="mb-6">
+            <label class="block text-sm font-semibold text-slate-300 mb-2">🚚 Motorista</label>
+            <input id="motoristaSearch" list="motoristasList"
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="Digite o nome do motorista..." />
+            <datalist id="motoristasList"></datalist>
+
+            <div id="motoristaSelecionado" class="hidden mt-3 p-4 rounded-lg bg-slate-950 border border-emerald-500/30">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-emerald-400" id="motoristaInfo"></div>
+                  <div class="text-sm text-slate-400 mt-1">
+                    <span id="motoristaTipo" class="px-2 py-1 rounded bg-slate-800 mr-2"></span>
+                    <span id="motoristaPlaca"></span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm text-slate-400">Frete Base</div>
+                  <div id="motoristaFrete" class="text-xl font-bold text-emerald-400"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TIPO DE ROTA -->
+          <div class="mb-6">
+            <label class="block text-sm font-semibold text-slate-300 mb-3">Tipo de Rota</label>
+            <div class="grid md:grid-cols-2 gap-4">
+              <button id="btnRotaSimples" class="tipo-rota-btn active">
+                <div class="text-2xl mb-2">📦</div>
+                <div class="font-bold">Rota Simples</div>
+                <div class="text-xs text-slate-400 mt-1">Um único seller</div>
+              </button>
+              <button id="btnMilkRun" class="tipo-rota-btn">
+                <div class="text-2xl mb-2">🔄</div>
+                <div class="font-bold">Milk Run</div>
+                <div class="text-xs text-slate-400 mt-1">Múltiplos sellers (rateio de frete)</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- ROTA SIMPLES -->
+          <div id="rotaSimplesForm" class="space-y-4">
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-6">
+              <h3 class="font-bold text-lg mb-4">Dados da Entrega (Stop #1)</h3>
+
+              <div class="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">🏪 Seller</label>
+                  <select id="simplesSellerDop" class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+                    <option value="">Selecione o seller...</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">💰 Frete (R$)</label>
+                  <input id="simplesFrete" type="number" step="0.01" min="0"
+                         class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                         placeholder="800.00" />
+                </div>
+              </div>
+
+              <div class="grid md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">📦 Volume</label>
+                  <input id="simplesVolume" type="number" step="0.01" min="0"
+                         class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                         placeholder="0 (opcional)" />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">📊 Sacas</label>
+                  <input id="simplesSacas" type="number" min="0"
+                         class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                         placeholder="0 (opcional)" />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">📦 Caixas</label>
+                  <input id="simplesCaixas" type="number" min="0"
+                         class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                         placeholder="0 (opcional)" />
+                </div>
+              </div>
+
+              <!-- ID E NOME (OPCIONAL) -->
+              <div class="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">🔖 ID da Rota (Opcional)</label>
+                  <input id="simplesRotaId"
+                         class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                         placeholder="Ex: SP6_001" />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-slate-300 mb-2">📝 Nome da Rota (Opcional)</label>
+                  <input id="simplesRotaNome"
+                         class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                         placeholder="Ex: Rota Shopee" />
+                </div>
+              </div>
+
+              <!-- Indicadores -->
+              <div class="mt-6 pt-6 border-t border-slate-800">
+                <div class="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <div class="text-sm text-slate-400">Receita Estimada</div>
+                    <div id="simplesReceita" class="text-2xl font-bold text-emerald-400">R$ 0,00</div>
+                  </div>
+                  <div>
+                    <div class="text-sm text-slate-400">% Custo</div>
+                    <div class="flex items-center gap-2">
+                      <div id="simplesDot" class="w-3 h-3 rounded-full bg-slate-500"></div>
+                      <div id="simplesPct" class="text-2xl font-bold">0,00%</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-sm text-slate-400">Status</div>
+                    <div id="simplesStatus" class="text-lg font-bold text-slate-400">-</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- MILK RUN -->
+          <div id="milkRunForm" class="hidden space-y-4">
+            <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+              <div class="flex items-center gap-3">
+                <div class="text-2xl">🔄</div>
+                <div>
+                  <div class="font-bold text-amber-300">Modo Milk Run Ativo</div>
+                  <div class="text-sm text-slate-300">O frete será rateado proporcionalmente pelo volume de cada stop.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg">Frete Total da Rota</h3>
+              </div>
+
+              <input id="milkRunFrete" type="number" step="0.01" min="0"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none text-xl font-bold"
+                     placeholder="1200.00" />
+
+              <div class="text-sm text-slate-400 mt-2">
+                Este valor será rateado entre todos os stops proporcionalmente ao volume.
+              </div>
+            </div>
+
+            <!-- STOPS -->
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg">Stops da Rota</h3>
+                <button id="btnAddStop" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+                  ➕ Adicionar Stop
+                </button>
+              </div>
+
+              <div id="stopsContainer" class="space-y-3">
+                <!-- Stops serão adicionados aqui -->
+              </div>
+
+              <div id="stopsEmpty" class="text-center py-8 text-slate-400">
+                Nenhum stop adicionado. Clique em "Adicionar Stop" para começar.
+              </div>
+            </div>
+
+            <!-- TOTAIS MILK RUN -->
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-6">
+              <h3 class="font-bold text-lg mb-4">Totais</h3>
+              <div class="grid md:grid-cols-4 gap-4">
+                <div>
+                  <div class="text-sm text-slate-400">Volume Total</div>
+                  <div id="milkRunVolTotal" class="text-2xl font-bold text-cyan-400">0</div>
+                </div>
+                <div>
+                  <div class="text-sm text-slate-400">Receita Total</div>
+                  <div id="milkRunReceitaTotal" class="text-2xl font-bold text-emerald-400">R$ 0,00</div>
+                </div>
+                <div>
+                  <div class="text-sm text-slate-400">% Custo Médio</div>
+                  <div class="flex items-center gap-2">
+                    <div id="milkRunDot" class="w-3 h-3 rounded-full bg-slate-500"></div>
+                    <div id="milkRunPct" class="text-2xl font-bold">0,00%</div>
+                  </div>
+                </div>
+                <div>
+                  <div class="text-sm text-slate-400">Status</div>
+                  <div id="milkRunStatus" class="text-lg font-bold text-slate-400">-</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AÇÕES -->
+          <div class="flex items-center justify-between gap-4 mt-6 pt-6 border-t border-slate-800">
+            <div id="formMsg" class="text-sm"></div>
+            <button id="btnCriarRota" class="px-8 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-lg">
+              ✅ Criar Rota
+            </button>
+          </div>
+        </div>
+
+        <!-- LISTA DE ROTAS -->
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold">Rotas Criadas</h2>
+            <button onclick="exportarParaExcel()"
+                    class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 font-semibold">
+              📊 Exportar Excel
+            </button>
+          </div>
+
+          <div id="rotasList" class="space-y-3">
+            <!-- Rotas serão listadas aqui -->
+          </div>
+
+          <div id="rotasEmpty" class="text-center py-12 text-slate-400">
+            Nenhuma rota criada ainda.
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: CADASTROS -->
+      <section id="pageCadastros" class="hidden space-y-6">
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <h2 class="text-2xl font-bold mb-4">Cadastros</h2>
+          <p class="text-slate-400">Gerenciamento de motoristas e sellers.</p>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-6">
+          <!-- MOTORISTAS -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-bold">Motoristas</h3>
+              <button onclick="abrirModalNovoMotorista()"
+                      class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+                ➕ Adicionar
+              </button>
+            </div>
+
+            <div id="driversList" class="space-y-2 max-h-96 overflow-auto">
+              <!-- Drivers serão listados aqui -->
+            </div>
+          </div>
+
+          <!-- SELLERS -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-bold">Sellers</h3>
+              <button onclick="abrirModalNovoSeller()"
+                      class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+                ➕ Adicionar
+              </button>
+            </div>
+
+            <div id="sellersList" class="space-y-2 max-h-96 overflow-auto">
+              <!-- Sellers serão listados aqui -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+     <!-- TAB: ANALYTICS -->
+      <section id="pageAnalytics" class="hidden space-y-6">
+
+        <!-- HEADER ANALYTICS -->
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold">📊 Analytics & Insights</h2>
+              <p class="text-slate-400 mt-2">Análise inteligente de dados logísticos</p>
+            </div>
+           <div class="flex gap-3">
+              <select id="analyticsPeriodo" class="px-4 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+                <option value="7">Últimos 7 dias</option>
+                <option value="15">Últimos 15 dias</option>
+                <option value="30" selected>Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+              </select>
+
+              <select id="analyticsOperacao" class="px-4 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+                <option value="TODAS">📊 Todas as Operações</option>
+                <option value="SP_CAPITAL">🏙️ SP Capital</option>
+                <option value="SP_INTERIOR">🏔️ SP Interior</option>
+                <option value="RJ">🌊 Rio de Janeiro</option>
+              </select>
+
+              <button onclick="atualizarAnalytics()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+                🔄 Atualizar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPIs PRINCIPAIS -->
+        <div class="grid md:grid-cols-4 gap-4">
+          <div class="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-xl p-6 card-hover">
+            <div class="text-emerald-100 text-sm font-semibold mb-2">💰 Receita Total</div>
+            <div id="kpiReceitaTotal" class="text-3xl font-bold">R$ 0,00</div>
+            <div id="kpiReceitaVariacao" class="text-sm text-emerald-200 mt-2"></div>
+          </div>
+
+          <div class="bg-gradient-to-br from-amber-600 to-amber-700 rounded-xl p-6 card-hover">
+            <div class="text-amber-100 text-sm font-semibold mb-2">🚚 Frete Total</div>
+            <div id="kpiFreteTotal" class="text-3xl font-bold">R$ 0,00</div>
+            <div id="kpiFreteVariacao" class="text-sm text-amber-200 mt-2"></div>
+          </div>
+
+          <div class="bg-gradient-to-br from-cyan-600 to-cyan-700 rounded-xl p-6 card-hover">
+            <div class="text-cyan-100 text-sm font-semibold mb-2">📊 % Custo Médio</div>
+            <div class="flex items-center gap-2">
+              <div id="kpiCustoDot" class="w-3 h-3 rounded-full bg-slate-500"></div>
+              <div id="kpiCustoMedio" class="text-3xl font-bold">0,00%</div>
+            </div>
+            <div id="kpiCustoStatus" class="text-sm text-cyan-200 mt-2"></div>
+          </div>
+
+          <div class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-6 card-hover">
+            <div class="text-purple-100 text-sm font-semibold mb-2">📦 Total Rotas</div>
+            <div id="kpiTotalRotas" class="text-3xl font-bold">0</div>
+            <div id="kpiRotasMilkRun" class="text-sm text-purple-200 mt-2"></div>
+          </div>
+        </div>
+
+        <!-- GRÁFICOS LINHA 1 -->
+        <div class="grid lg:grid-cols-2 gap-6">
+
+          <!-- EVOLUÇÃO TEMPORAL -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <h3 class="text-lg font-bold mb-4">📈 Evolução: Receita vs Frete</h3>
+            <div class="h-80">
+              <canvas id="chartEvolucao"></canvas>
+            </div>
+          </div>
+
+          <!-- RENTABILIDADE POR MOTORISTA -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <h3 class="text-lg font-bold mb-4">🚚 Top 10 Motoristas (% Custo)</h3>
+            <div class="h-80">
+              <canvas id="chartMotoristas"></canvas>
+            </div>
+          </div>
+
+        </div>
+ <!-- GRÁFICOS LINHA 2 -->
+        <div class="grid lg:grid-cols-3 gap-6">
+
+          <!-- DISTRIBUIÇÃO POR SOC -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <h3 class="text-lg font-bold mb-4">📍 Volume por SOC</h3>
+            <div class="h-80 flex items-center justify-center">
+              <canvas id="chartSOC"></canvas>
+            </div>
+          </div>
+
+          <!-- TOP SELLERS -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <h3 class="text-lg font-bold mb-4">🏆 Top 10 Sellers (Receita)</h3>
+            <div class="h-80">
+              <canvas id="chartSellers"></canvas>
+            </div>
+          </div>
+
+          <!-- MILK RUN VS SIMPLES -->
+          <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+            <h3 class="text-lg font-bold mb-4">🔄 Milk Run vs Simples</h3>
+            <div class="h-80">
+              <canvas id="chartMilkRun"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- GRÁFICO: PERFIL DE VEÍCULOS (LINHA SEPARADA) -->
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <h3 class="text-lg font-bold mb-4">🚚 Perfil de Veículos Mais Usado na Operação</h3>
+          <div class="h-96 flex items-center justify-center">
+            <canvas id="chartVeiculos"></canvas>
+          </div>
+        </div>
+
+        </div>
+        <!-- HEATMAP -->
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <h3 class="text-lg font-bold mb-4">🗓️ Heatmap Operacional (Rotas por Dia da Semana)</h3>
+          <div id="heatmapContainer" class="flex flex-wrap gap-2 justify-center">
+            <!-- Heatmap será renderizado aqui -->
+          </div>
+        </div>
+
+        <!-- TABELA DE INSIGHTS -->
+        <div class="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-6">
+          <h3 class="text-lg font-bold mb-4">💡 Insights Automatizados</h3>
+          <div id="insightsContainer" class="space-y-3">
+            <!-- Insights serão renderizados aqui -->
+          </div>
+        </div>
+
+      </section>
+
+  <!-- MODAIS -->
+
+  <!-- MODAL ADICIONAR/EDITAR MOTORISTA -->
+  <div id="modalMotorista" class="modal">
+    <div class="modal-content">
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="modalMotoristaTitle" class="text-2xl font-bold">Adicionar Motorista</h2>
+        <button onclick="fecharModalMotorista()" class="text-slate-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-4">
+        <input type="hidden" id="editMotoristaId" />
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">Nome do Motorista *</label>
+          <input id="modalMotNome" type="text" required
+                 class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                 placeholder="João Silva" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">CPF *</label>
+            <input id="modalMotCpf" type="text" required
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="123.456.789-00" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">ID do Motorista *</label>
+            <input id="modalMotLegacyId" type="text" required
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="MOT001" />
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">Placa</label>
+            <input id="modalMotPlaca" type="text"
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="ABC1234" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">Email</label>
+            <input id="modalMotEmail" type="email"
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="motorista@email.com" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">Perfil do Veículo *</label>
+          <select id="modalMotTipo" onchange="atualizarFretePadrao()"
+                  class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+            <option value="">Selecione...</option>
+            <option value="VAN">Van (R$ 500,00)</option>
+            <option value="VUC">VUC (R$ 600,00)</option>
+            <option value="3/4">3/4 (R$ 800,00)</option>
+            <option value="TOCO">Toco (R$ 1.000,00)</option>
+            <option value="TRUCK">Truck (R$ 1.200,00)</option>
+            <option value="CARRETA">Carreta (R$ 1.500,00)</option>
+          </select>
+        </div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">Frete Padrão</label>
+            <input id="modalMotFretePadrao" type="number" step="0.01" readonly
+                   class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400"
+                   placeholder="R$ 0,00" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">Frete Customizado</label>
+            <input id="modalMotFreteCustom" type="number" step="0.01" onchange="validarFreteCustomizado()"
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="Deixe vazio para usar padrão" />
+          </div>
+        </div>
+
+        <div id="divJustificativa" class="hidden">
+          <label class="block text-sm font-semibold text-amber-300 mb-2">⚠️ Justificativa para Diretoria *</label>
+          <textarea id="modalMotJustificativa" rows="3"
+                    class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-amber-500 focus:border-amber-400 focus:outline-none"
+                    placeholder="Explique por que o frete customizado é maior que o padrão..."></textarea>
+          <div class="text-xs text-amber-300 mt-1">
+            O frete customizado é maior que o padrão. Justificativa obrigatória.
+          </div>
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button onclick="fecharModalMotorista()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+            Cancelar
+          </button>
+          <button onclick="salvarMotorista()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+            💾 Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ADICIONAR/EDITAR SELLER -->
+  <div id="modalSeller" class="modal">
+    <div class="modal-content max-w-2xl">
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="modalSellerTitle" class="text-2xl font-bold">Adicionar Seller</h2>
+        <button onclick="fecharModalSeller()" class="text-slate-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-4">
+        <input type="hidden" id="editSellerId" />
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">DOP *</label>
+            <input id="modalSellerDop" type="number" required
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="3049" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">Nome *</label>
+            <input id="modalSellerNome" type="text" required
+                   class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                   placeholder="TERRABABA" />
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">SOC *</label>
+            <select id="modalSellerSoc" required
+                    class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+              <option value="">Selecione...</option>
+              <option value="SP2">SP2</option>
+              <option value="SP6">SP6</option>
+              <option value="SP7">SP7</option>
+              <option value="SP8">SP8</option>
+              <option value="RJ2">RJ2</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-slate-300 mb-2">Operação</label>
+            <select id="modalSellerOperacao"
+                    class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+              <option value="">Selecione...</option>
+              <option value="SP_CAPITAL">SP Capital</option>
+              <option value="SP_INTERIOR">SP Interior</option>
+              <option value="RJ">RJ</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">Endereço</label>
+          <input id="modalSellerEndereco" type="text"
+                 class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                 placeholder="Rua Exemplo, 123" />
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button onclick="fecharModalSeller()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+            Cancelar
+          </button>
+          <button onclick="salvarSeller()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+            💾 Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR ROTA (COM CAMPOS INDIVIDUAIS POR STOP) -->
+  <div id="modalEditarRota" class="modal">
+    <div class="modal-content max-w-4xl">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold">✏️ Editar Rota - Dados Individuais por Stop</h2>
+        <button onclick="fecharModalEditarRota()" class="text-slate-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-4">
+        <input type="hidden" id="editRotaIdHidden" />
+
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-4">
+          <div class="text-sm text-slate-400 mb-2">Informações Atuais:</div>
+          <div id="editRotaInfoAtual" class="text-slate-300"></div>
+        </div>
+
+        <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+          <div class="text-sm font-bold text-amber-300 mb-2">⚠️ ATENÇÃO - Edição Individual por Stop</div>
+          <div class="text-xs text-slate-300">
+            Cada stop pode ter seu próprio ID, Nome, Volume, Sacas e Caixas.<br>
+            Os dados NÃO são compartilhados entre stops - edite cada um separadamente.
+          </div>
+        </div>
+
+        <div id="editRotaStopsContainer" class="space-y-4">
+          <!-- Stops serão renderizados aqui com campos individuais -->
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button onclick="fecharModalEditarRota()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+            Cancelar
+          </button>
+          <button onclick="salvarEdicaoRota()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+            💾 Salvar Todos os Stops
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMAR EXCLUSÃO MOTORISTA -->
+  <div id="modalConfirmarExclusaoMotorista" class="modal">
+    <div class="modal-content max-w-md">
+      <h3 class="text-xl font-bold mb-4">⚠️ Confirmar Exclusão</h3>
+      <p class="text-slate-300 mb-6">Tem certeza que deseja excluir este motorista?</p>
+      <div class="flex gap-3">
+        <button onclick="fecharModalConfirmarExclusaoMotorista()"
+                class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+          Cancelar
+        </button>
+        <button onclick="confirmarExclusaoMotorista()"
+                class="flex-1 px-6 py-3 rounded-lg bg-red-600 hover:bg-red-500 font-semibold">
+          🗑️ Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMAR EXCLUSÃO SELLER -->
+  <div id="modalConfirmarExclusaoSeller" class="modal">
+    <div class="modal-content max-w-md">
+      <h3 class="text-xl font-bold mb-4">⚠️ Confirmar Exclusão</h3>
+      <p class="text-slate-300 mb-6">Tem certeza que deseja excluir este seller?</p>
+      <div class="flex gap-3">
+        <button onclick="fecharModalConfirmarExclusaoSeller()"
+                class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+          Cancelar
+        </button>
+        <button onclick="confirmarExclusaoSeller()"
+                class="flex-1 px-6 py-3 rounded-lg bg-red-600 hover:bg-red-500 font-semibold">
+          🗑️ Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMAR EXCLUSÃO ROTA -->
+  <div id="modalConfirmarExclusaoRota" class="modal">
+    <div class="modal-content max-w-md">
+      <h3 class="text-xl font-bold mb-4">⚠️ Excluir Rota</h3>
+      <p class="text-slate-300 mb-6">Tem certeza? Todos os stops serão excluídos permanentemente.</p>
+      <div class="flex gap-3">
+        <button onclick="fecharModalConfirmarExclusaoRota()"
+                class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+          Cancelar
+        </button>
+        <button onclick="confirmarExclusaoRota()"
+                class="flex-1 px-6 py-3 rounded-lg bg-red-600 hover:bg-red-500 font-semibold">
+          🗑️ Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL FECHAR ROTA -->
+  <div id="modalFecharRota" class="modal">
+    <div class="modal-content max-w-md">
+      <h3 class="text-xl font-bold mb-4">🔒 Fechar Rota</h3>
+
+      <div id="fecharRotaInfo" class="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
+        <div class="text-sm text-slate-400 mb-1">Rota selecionada:</div>
+        <div id="fecharRotaIdentificacao" class="font-bold text-emerald-400"></div>
+        <div id="fecharRotaNome" class="text-sm text-slate-300"></div>
+      </div>
+
+      <p class="text-slate-300 mb-6">Ao fechar, a rota será liberada para pagamento e não poderá mais ser editada.</p>
+
+      <div class="flex gap-3">
+        <button onclick="fecharModalFecharRota()"
+                class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+          Cancelar
+        </button>
+        <button onclick="confirmarFecharRota()"
+                class="flex-1 px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+          🔒 Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+<!-- MODAL DETALHES DA ROTA -->
+  <div id="modalDetalhesRota" class="modal">
+    <div class="modal-content">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold">👁️ Detalhes da Rota</h2>
+        <button onclick="fecharModalDetalhesRota()" class="text-slate-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+      </div>
+      <div id="detalhesRotaConteudo" class="space-y-6"></div>
+    </div>
+  </div>
+
+  <!-- MODAL ADICIONAR STOP (TRANSFORMAR EM MILK RUN) -->
+  <div id="modalAddStopRota" class="modal">
+    <div class="modal-content">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold">🔄 Adicionar Stop à Rota (Milk Run)</h2>
+        <button onclick="fecharModalAddStopRota()" class="text-slate-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-6">
+        <input type="hidden" id="addStopRotaId" />
+
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+          <div class="text-sm text-slate-400 mb-2">Informações da Rota:</div>
+          <div id="addStopRotaMotorista" class="text-sm text-slate-400 mb-4"></div>
+
+          <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-800">
+            <div>
+              <div class="text-xs text-slate-400">Frete Total</div>
+              <div id="addStopFreteTotalDisplay" class="font-bold text-emerald-400"></div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400">Stops Atuais</div>
+              <div id="addStopQtdStops" class="font-bold"></div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400">Volume Total</div>
+              <div id="addStopVolTotal" class="font-bold"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+          <div class="text-sm font-bold text-amber-300 mb-2">⚠️ IMPORTANTE - Dados Individuais</div>
+          <div class="text-xs text-slate-300">
+            Este novo stop terá seus próprios ID, Nome, Volume, Sacas e Caixas.<br>
+            Não será compartilhado com os outros stops da rota.
+          </div>
+        </div>
+
+        <div class="bg-slate-950 border border-emerald-500/30 rounded-xl p-6">
+          <h3 class="font-bold mb-4">Novo Stop (Dados Individuais)</h3>
+
+          <div class="grid md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">🔖 ID da Rota (Deste Stop)</label>
+              <input id="addStopIndividualId" type="text"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="Ex: SP6_002 (opcional)" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">📝 Nome da Rota (Deste Stop)</label>
+              <input id="addStopIndividualNome" type="text"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="Ex: Rota Magazine (opcional)" />
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">Seller *</label>
+              <select id="addStopSeller"
+                      class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none">
+                <option value="">Selecione...</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">Volume</label>
+              <input id="addStopVolume" type="number" step="0.01" min="0"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="0 (opcional)" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">Sacas</label>
+              <input id="addStopSacas" type="number" min="0"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="0 (opcional)" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-slate-300 mb-2">Caixas</label>
+              <input id="addStopCaixas" type="number" min="0"
+                     class="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="0 (opcional)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <button onclick="fecharModalAddStopRota()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold">
+            Cancelar
+          </button>
+          <button onclick="salvarNovoStopNaRota()"
+                  class="flex-1 px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold">
+            ➕ Adicionar Stop
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const SUPABASE_URL = "";
+  const SUPABASE_ANON_KEY = "";
+  // ── PORTFOLIO DEMO MODE ──────────────────────────────────
+  ;(function(){
+    var _nid=100;
+    var _store={
+      drivers:[
+        {id:1,name:'Carlos Mendes',tipo_veiculo:'VAN',placa:'ABC-1A23',cpf:null,precisa_justificativa:false,legacy_id:'M001'},
+        {id:2,name:'Roberto Alves',tipo_veiculo:'TOCO',placa:'DEF-2B34',cpf:null,precisa_justificativa:false,legacy_id:'M002'},
+        {id:3,name:'Fabio Lima',tipo_veiculo:'3/4',placa:'GHI-3C45',cpf:null,precisa_justificativa:false,legacy_id:'M003'},
+        {id:4,name:'Antonio Pereira',tipo_veiculo:'VUC',placa:'JKL-4D56',cpf:null,precisa_justificativa:false,legacy_id:'M004'},
+        {id:5,name:'Jose Santos',tipo_veiculo:'TRUCK',placa:'MNO-5E67',cpf:null,precisa_justificativa:true,legacy_id:'M005'}
+      ],
+      sellers:[
+        {id:1,dop:'1001',nome:'Distribuidora Norte',soc:'SP001'},
+        {id:2,dop:'1002',nome:'Comercial Centro',soc:'SP002'},
+        {id:3,dop:'1003',nome:'Atacado Sul',soc:'SP003'},
+        {id:4,dop:'1004',nome:'Mercado Leste',soc:'SP004'},
+        {id:5,dop:'1466',nome:'Atacadao Interior',soc:'INT001'}
+      ],
+      saidas:[
+        {id:1,data:'2026-04-30',operacao:'Entrega Rota 01',soc:'SP001',motorista_id:1,tipo_veiculo:'VAN',is_milk_run:false,status:'ABERTO',frete_total:500,receita_estimada:1831.30,rentabilidade_pct:27.31,drivers:{name:'Carlos Mendes',placa:'ABC-1A23'}},
+        {id:2,data:'2026-04-29',operacao:'Entrega Rota 02',soc:'SP002',motorista_id:2,tipo_veiculo:'TOCO',is_milk_run:false,status:'FECHADO',frete_total:1000,receita_estimada:4210.50,rentabilidade_pct:23.75,drivers:{name:'Roberto Alves',placa:'DEF-2B34'}},
+        {id:3,data:'2026-04-29',operacao:'Milk Run Alfa',soc:'SP001',motorista_id:3,tipo_veiculo:'3/4',is_milk_run:true,status:'ABERTO',frete_total:800,receita_estimada:3100.00,rentabilidade_pct:25.81,drivers:{name:'Fabio Lima',placa:'GHI-3C45'}},
+        {id:4,data:'2026-04-28',operacao:'Entrega Rota 03',soc:'SP003',motorista_id:4,tipo_veiculo:'VUC',is_milk_run:false,status:'FECHADO',frete_total:600,receita_estimada:2100.00,rentabilidade_pct:28.57,drivers:{name:'Antonio Pereira',placa:'JKL-4D56'}},
+        {id:5,data:'2026-04-28',operacao:'Rota Interior',soc:'INT001',motorista_id:5,tipo_veiculo:'TRUCK',is_milk_run:false,status:'ABERTO',frete_total:1200,receita_estimada:3800.00,rentabilidade_pct:31.58,drivers:{name:'Jose Santos',placa:'MNO-5E67'}}
+      ],
+      saida_stops:[
+        {id:1,saida_id:1,ordem:1,seller_dop:'1001',rota_id:'RT-001',rota_nome:'Rota Norte SP',sacas:120,caixas:50,volume_total:170,frete_rateado:500,receita_estimada:1831.30,rentabilidade_pct:27.31},
+        {id:2,saida_id:2,ordem:1,seller_dop:'1002',rota_id:'RT-002',rota_nome:'Rota Centro SP',sacas:200,caixas:80,volume_total:280,frete_rateado:1000,receita_estimada:4210.50,rentabilidade_pct:23.75},
+        {id:3,saida_id:3,ordem:1,seller_dop:'1001',rota_id:'RT-003-A',rota_nome:'Milk Run A1',sacas:80,caixas:30,volume_total:110,frete_rateado:400,receita_estimada:1550.00,rentabilidade_pct:25.81},
+        {id:4,saida_id:3,ordem:2,seller_dop:'1002',rota_id:'RT-003-B',rota_nome:'Milk Run A2',sacas:60,caixas:20,volume_total:80,frete_rateado:400,receita_estimada:1550.00,rentabilidade_pct:25.81},
+        {id:5,saida_id:4,ordem:1,seller_dop:'1003',rota_id:'RT-004',rota_nome:'Rota Sul SP',sacas:150,caixas:60,volume_total:210,frete_rateado:600,receita_estimada:2100.00,rentabilidade_pct:28.57},
+        {id:6,saida_id:5,ordem:1,seller_dop:'1466',rota_id:'RT-005',rota_nome:'Rota Interior',sacas:180,caixas:70,volume_total:250,frete_rateado:1200,receita_estimada:3800.00,rentabilidade_pct:31.58}
+      ]
+    };
+    function _q(tn){
+      var _op='sel',_ins=null,_upd=null,_flt=[],_lim=null,_cnt=false,_hd=false;
+      var q={
+        select:function(c,o){if(o&&o.count)_cnt=true;if(o&&o.head)_hd=true;return q},
+        order:function(){return q},
+        limit:function(n){_lim=n;return q},
+        eq:function(col,val){_flt.push(function(r){return String(r[col])===String(val)});return q},
+        not:function(){return q},
+        neq:function(col,val){_flt.push(function(r){return r[col]!==val});return q},
+        single:function(){_lim=1;return q},
+        insert:function(d){_op='ins';_ins=d;return q},
+        update:function(d){_op='upd';_upd=d;return q},
+        delete:function(){_op='del';return q},
+        then:function(res,rej){
+          var rows=(_store[tn]||[]).slice();
+          if(_op==='ins'){
+            var arr=Array.isArray(_ins)?_ins:[_ins];
+            var ins=arr.map(function(r){var o={id:++_nid,created_at:new Date().toISOString()};return Object.assign(o,r)});
+            (_store[tn]=_store[tn]||[]).push.apply(_store[tn],ins);
+            return Promise.resolve({data:_lim===1?ins[0]:ins,error:null}).then(res,rej);
+          }
+          if(_op==='upd'){
+            (_store[tn]||[]).forEach(function(r){if(_flt.every(function(f){return f(r)}))Object.assign(r,_upd)});
+            return Promise.resolve({data:null,error:null}).then(res,rej);
+          }
+          if(_op==='del'){
+            _store[tn]=(_store[tn]||[]).filter(function(r){return!_flt.every(function(f){return f(r)})});
+            return Promise.resolve({data:null,error:null}).then(res,rej);
+          }
+          rows=rows.filter(function(r){return _flt.every(function(f){return f(r)})});
+          if(_lim)rows=rows.slice(0,_lim);
+          if(_cnt)return Promise.resolve({data:_hd?null:rows,count:rows.length,error:null}).then(res,rej);
+          return Promise.resolve({data:_lim===1?(rows[0]||null):rows,error:null}).then(res,rej);
+        }
+      };
+      return q;
+    }
+    var _du={email:'demo@portfolio.dev',id:'demo-user-001'};
+    window.supabase={createClient:function(){return{
+      from:function(t){return _q(t)},
+      auth:{
+        getSession:function(){return Promise.resolve({data:{session:{user:_du}},error:null})},
+        signInWithPassword:function(){return Promise.resolve({data:{user:_du},error:null})},
+        signOut:function(){return Promise.resolve({data:null,error:null})}
+      }
+    }}};
+  })();
+  // ─────────────────────────────────────────────────────────
+
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const $ = id => document.getElementById(id);
+
+  let cachedDrivers = [];
+  let cachedSellers = [];
+  let cachedRotas = [];
+  let selectedDriver = null;
+  let isMilkRun = false;
+
+  const TAXA_SP = 0.61;
+  const TAXA_RJ = 0.74;
+  const TAXA_INTERIOR = 1.63;
+
+
+  const FRETES_PADRAO = {
+    'VAN': 500,
+    'VUC': 600,
+    '3/4': 800,
+    'TOCO': 1000,
+    'TRUCK': 1200,
+    'CARRETA': 1500
+  };
+
+  let motoristaParaExcluir = null;
+  let sellerParaExcluir = null;
+  let rotaParaExcluir = null;
+  let rotaParaFechar = null;
+  let rotaParaEditar = null;
+  let stopCounter = 0;
+
+  function setStatus(text, sub = "", color = "yellow") {
+    $("statusText").textContent = text;
+    $("statusSub").textContent = sub;
+    const dot = $("statusDot");
+    dot.className = "w-3 h-3 rounded-full " + (
+      color === "green" ? "bg-green-400" :
+      color === "red" ? "bg-red-400" :
+      "bg-yellow-400 animate-pulse"
+    );
+  }
+
+  function todayISO() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function moneyBR(v) {
+    return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+
+  function pctBR(v) {
+    return Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+  }
+
+  function getDotClass(pct) {
+    const p = Number(pct || 0);
+    if (p <= 28) return "bg-green-400";
+    if (p > 28 && p <= 30) return "bg-amber-400";
+    return "bg-red-400";
+  }
+
+  function getStatusText(pct) {
+    const p = Number(pct || 0);
+    if (p <= 28) return "✅ Ótimo";
+    if (p > 28 && p <= 30) return "⚠️ Atenção";
+    return "❌ Alto";
+  }
+
+  function getTaxa(soc, dop) {
+  const dopNum = parseInt(dop);
+
+  // Exceção: DOP 1466 (Limeira) tem taxa diferente
+  if (dopNum === 1466) return 0.74;
+
+  // Outros DOPs do Interior
+  if (DOPS_INTERIOR.includes(dopNum)) return 1.63;
+
+  // Rio de Janeiro
+  if (String(soc).toUpperCase().startsWith("RJ")) return 0.74;
+
+  // SP Capital (padrão)
+  return 0.61;
+}
+
+  function calcReceita(volume, taxa) {
+    return Number(volume || 0) * Number(taxa || 0);
+  }
+
+  function calcPct(frete, receita) {
+    const f = Number(frete || 0);
+    const r = Number(receita || 0);
+    if (r <= 0) return 0;
+    return (f / r) * 100;
+  }
+
+  function parseBRL(txt) {
+    if (!txt) return 0;
+    const s = String(txt).replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".");
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  async function countTable(table) {
+    const { count } = await supabaseClient.from(table).select("*", { count: "exact", head: true });
+    return count || 0;
+  }
+
+  async function refreshCounts() {
+    $("countDrivers").textContent = await countTable("drivers");
+    $("countSellers").textContent = await countTable("sellers");
+
+    const total = await countTable("saidas");
+    $("countSaidas").textContent = total;
+
+    const { count: milkRunCount } = await supabaseClient
+      .from("saidas")
+      .select("*", { count: "exact", head: true })
+      .eq("is_milk_run", true);
+
+    $("countMilkRuns").textContent = milkRunCount || 0;
+  }
+
+  async function loadDrivers() {
+    const { data, error } = await supabaseClient
+      .from("drivers")
+      .select("*")
+      .order("name");
+
+    if (error) {
+      console.error(error);
+      return setStatus("Erro ao carregar motoristas", error.message, "red");
+    }
+
+    cachedDrivers = data || [];
+
+    const dl = $("motoristasList");
+    dl.innerHTML = "";
+    for (const d of cachedDrivers) {
+      const opt = document.createElement("option");
+      opt.value = `${d.name} | ${d.placa || ""}`;
+      opt.dataset.driverId = d.id;
+      dl.appendChild(opt);
+    }
+
+    renderDriversList();
+  }
+
+  async function loadSellers() {
+    const { data, error } = await supabaseClient
+      .from("sellers")
+      .select("*")
+      .order("dop");
+
+    if (error) {
+      console.error(error);
+      return setStatus("Erro ao carregar sellers", error.message, "red");
+    }
+
+    cachedSellers = data || [];
+
+    const sel = $("simplesSellerDop");
+    sel.innerHTML = '<option value="">Selecione o seller...</option>';
+    for (const s of cachedSellers) {
+      const opt = document.createElement("option");
+      opt.value = s.dop;
+      opt.textContent = `${s.dop} - ${s.nome} (${s.soc})`;
+      sel.appendChild(opt);
+    }
+
+    renderSellersList();
+  }
+
+  async function loadRotas() {
+    const { data, error } = await supabaseClient
+      .from("saidas")
+      .select(`*, drivers (name, placa)`)
+      .order("data", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error(error);
+      return setStatus("Erro ao carregar rotas", error.message, "red");
+    }
+
+    cachedRotas = data || [];
+    renderRotasList();
+  }
+  // =========================
+  // RENDERIZAR LISTAS
+  // =========================
+
+  function renderDriversList() {
+    const container = $("driversList");
+    container.innerHTML = "";
+
+    if (!cachedDrivers.length) {
+      container.innerHTML = '<div class="text-slate-400 text-center py-4">Nenhum motorista cadastrado</div>';
+      return;
+    }
+
+    for (const d of cachedDrivers) {
+      const div = document.createElement("div");
+      div.className = "p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 transition";
+
+      const alertBadge = d.precisa_justificativa
+        ? '<span class="px-2 py-0.5 rounded bg-amber-500 text-xs font-semibold ml-2" title="Precisa aprovação da diretoria">⚠️</span>'
+        : '';
+
+      div.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <div class="font-semibold">${d.name}${alertBadge}</div>
+            <div class="text-sm text-slate-400 mt-1">
+              <span class="px-2 py-0.5 rounded bg-slate-800 mr-2">${d.tipo_veiculo || "-"}</span>
+              ${d.placa || "-"}
+              ${d.cpf ? ` | CPF: ${d.cpf}` : ""}
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="abrirModalEditarMotorista('${d.id}')"
+                    class="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-sm font-semibold">
+              ✏️
+            </button>
+            <button onclick="abrirModalConfirmarExclusaoMotorista('${d.id}')"
+                    class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-sm font-semibold">
+              🗑️
+            </button>
+          </div>
+        </div>
+      `;
+      container.appendChild(div);
+    }
+  }
+
+  function renderSellersList() {
+    const container = $("sellersList");
+    container.innerHTML = "";
+
+    if (!cachedSellers.length) {
+      container.innerHTML = '<div class="text-slate-400 text-center py-4">Nenhum seller cadastrado</div>';
+      return;
+    }
+
+    for (const s of cachedSellers) {
+      const div = document.createElement("div");
+      div.className = "p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500/50 transition";
+      div.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <div class="font-semibold">${s.nome}</div>
+            <div class="text-sm text-slate-400 mt-1">
+              <span class="px-2 py-0.5 rounded bg-slate-800 mr-2">DOP ${s.dop}</span>
+              <span class="px-2 py-0.5 rounded bg-slate-800">${s.soc}</span>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="abrirModalEditarSeller('${s.id}')"
+                    class="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-sm font-semibold">
+              ✏️
+            </button>
+            <button onclick="abrirModalConfirmarExclusaoSeller('${s.id}')"
+                    class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-sm font-semibold">
+              🗑️
+            </button>
+          </div>
+        </div>
+      `;
+      container.appendChild(div);
+    }
+  }
+
+  async function renderRotasList() {
+    const container = $("rotasList");
+    const empty = $("rotasEmpty");
+
+    if (!cachedRotas.length) {
+      container.innerHTML = "";
+      empty.classList.remove("hidden");
+      return;
+    }
+
+    empty.classList.add("hidden");
+    container.innerHTML = "";
+
+    for (const r of cachedRotas) {
+      const { data: stops } = await supabaseClient
+        .from("saida_stops")
+        .select("*")
+        .eq("saida_id", r.id)
+        .order("ordem");
+
+      const div = document.createElement("div");
+
+      if (r.is_milk_run) {
+        div.className = "p-4 rounded-lg bg-gradient-to-br from-slate-950 to-slate-900 border-2 border-amber-500/60 hover:border-amber-400 transition card-hover relative shadow-lg shadow-amber-900/20";
+      } else {
+        div.className = "p-4 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/30 transition card-hover";
+      }
+
+      const statusBadge = r.status === 'FECHADO'
+        ? '<span class="status-badge-fechado">🔒 FECHADO</span>'
+        : '<span class="status-badge-aberto">🟡 ABERTO</span>';
+
+      // *** CORREÇÃO AQUI: Badge mostra "Milk Run - X rotas" ***
+      let rotaIdDisplay = '';
+      if (r.is_milk_run && stops && stops.length > 0) {
+        rotaIdDisplay = `<span class="text-amber-300 font-bold">🔄 Milk Run - ${stops.length} rotas individuais</span>`;
+      } else if (stops && stops.length > 0 && stops[0].rota_id) {
+        rotaIdDisplay = stops[0].rota_id;
+      } else {
+        rotaIdDisplay = "Sem ID";
+      }
+
+      const milkRunBadge = r.is_milk_run
+        ? `<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white text-sm font-bold shadow-md animate-pulse">
+             <span class="text-lg">🔄</span>
+             MILK RUN
+           </span>`
+        : '';
+
+      const dotClass = getDotClass(r.rentabilidade_pct);
+
+      const botoesAcao = r.status === 'ABERTO'
+        ? `
+          <button onclick="abrirModalEditarRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold"
+                  title="Editar Dados Individuais de Cada Stop">
+            ✏️ Editar
+          </button>
+          <button onclick="abrirModalAddStopRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-xs font-semibold"
+                  title="Adicionar Stop (Milk Run)">
+            🔄 Milk Run
+          </button>
+          <button onclick="abrirModalFecharRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold"
+                  title="Fechar Rota">
+            🔒 Fechar
+          </button>
+          <button onclick="abrirModalConfirmarExclusaoRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-xs font-semibold"
+                  title="Excluir Rota">
+            🗑️ Excluir
+          </button>
+        `
+        : `
+          <button onclick="abrirModalEditarRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold"
+                  title="Editar Rota">
+            ✏️ Editar
+          </button>
+          <button onclick="reabrirRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-orange-600 hover:bg-orange-500 text-xs font-semibold"
+                  title="Reabrir Rota (permite editar/excluir)">
+            🔓 Reabrir
+          </button>
+          <button onclick="abrirModalConfirmarExclusaoRota('${r.id}')"
+                  class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-xs font-semibold"
+                  title="⚠️ Excluir Rota">
+            🗑️ Excluir
+          </button>
+        `;
+
+      let stopsHtml = '';
+      if (stops && stops.length > 0) {
+        stopsHtml = `
+          <div class="mt-4 pt-4 border-t ${r.is_milk_run ? 'border-amber-500/30' : 'border-slate-700'}">
+            <div class="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+              <span>📍 Stops da Rota</span>
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-xs">${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}</span>
+            </div>
+            <div class="space-y-2">
+        `;
+
+        for (const stop of stops) {
+          const sellerInfo = cachedSellers.find(s => s.dop === stop.seller_dop);
+          const sellerNome = sellerInfo ? sellerInfo.nome : `DOP ${stop.seller_dop}`;
+          const stopDotClass = getDotClass(stop.rentabilidade_pct);
+
+          // *** DESTAQUE VISUAL: Badge de ID Individual ***
+          const idIndividualBadge = r.is_milk_run
+            ? '<span class="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold">🔖 ID Individual</span>'
+            : '';
+
+          stopsHtml += `
+            <div class="p-3 rounded bg-slate-900 border ${r.is_milk_run ? 'border-amber-900/30' : 'border-slate-700'} text-xs">
+              <div class="flex items-center justify-between mb-2">
+                <div class="font-semibold text-slate-200 flex items-center gap-2">
+                  <span class="text-slate-500">Stop #${stop.ordem}</span> · ${sellerNome}
+                  ${idIndividualBadge}
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full ${stopDotClass}"></div>
+                  <span class="font-bold">${pctBR(stop.rentabilidade_pct)}</span>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-slate-400">
+                <div>📦 Volume: <span class="text-slate-200 font-semibold">${stop.volume_total || 0}</span></div>
+                <div>💰 Frete: <span class="text-emerald-400 font-semibold">${moneyBR(stop.frete_rateado)}</span></div>
+                <div>📊 Sacas: <span class="text-slate-200">${stop.sacas || 0}</span></div>
+                <div>💵 Receita: <span class="text-cyan-400 font-semibold">${moneyBR(stop.receita_estimada)}</span></div>
+                <div>📦 Caixas: <span class="text-slate-200">${stop.caixas || 0}</span></div>
+                <div>🏪 DOP: <span class="text-slate-200">${stop.seller_dop}</span></div>
+              </div>
+              <div class="mt-2 pt-2 border-t border-slate-800 grid grid-cols-2 gap-2">
+                <div class="bg-slate-950 p-1.5 rounded border ${r.is_milk_run ? 'border-amber-500/30' : 'border-slate-800'}">
+                  <div class="text-[9px] text-slate-500 uppercase font-bold mb-0.5">🔖 ID da Rota ${r.is_milk_run ? '(Individual)' : ''}</div>
+                  <div class="text-emerald-400 font-bold truncate">${stop.rota_id || "-"}</div>
+                </div>
+                <div class="bg-slate-950 p-1.5 rounded border ${r.is_milk_run ? 'border-amber-500/30' : 'border-slate-800'}">
+                  <div class="text-[9px] text-slate-500 uppercase font-bold mb-0.5">📝 Nome da Rota ${r.is_milk_run ? '(Individual)' : ''}</div>
+                  <div class="text-emerald-400 font-bold truncate">${stop.rota_nome || "-"}</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        stopsHtml += `
+            </div>
+          </div>
+        `;
+      }
+
+      const milkRunBar = r.is_milk_run
+        ? '<div class="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-amber-500 via-orange-500 to-amber-600 rounded-l-lg"></div>'
+        : '';
+
+      div.innerHTML = `
+        ${milkRunBar}
+        <div class="flex items-start justify-between gap-4 mb-3">
+          <div class="flex-1">
+            <div class="flex items-center gap-3 mb-2 flex-wrap">
+              <div class="font-bold text-lg text-emerald-400">${rotaIdDisplay}</div>
+              ${statusBadge}
+              ${milkRunBadge}
+              <span class="px-2 py-1 rounded bg-slate-800 text-xs">${r.soc}</span>
+            </div>
+            <div class="text-slate-400 text-sm mb-2">
+              📅 ${r.data} | 🚚 ${r.drivers?.name || "-"} | 🎯 ${r.operacao}
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="flex items-center gap-2 justify-end mb-1">
+              <div class="w-3 h-3 rounded-full ${dotClass}"></div>
+              <div class="text-xl font-bold">${pctBR(r.rentabilidade_pct)}</div>
+            </div>
+            <div class="text-sm text-slate-400">Frete: ${moneyBR(r.frete_total)}</div>
+            <div class="text-sm text-slate-400">Receita: ${moneyBR(r.receita_estimada)}</div>
+
+            <div class="flex gap-2 mt-3 justify-end flex-wrap">
+              <button onclick="abrirModalDetalhesRota('${r.id}')"
+                      class="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold"
+                      title="Ver Detalhes Completos">
+                👁️ Ver
+              </button>
+              ${botoesAcao}
+            </div>
+          </div>
+        </div>
+
+        ${stopsHtml}
+      `;
+
+      container.appendChild(div);
+    }
+  }
+  // =========================
+  // CRUD MOTORISTAS
+  // =========================
+
+  function abrirModalNovoMotorista() {
+    $("modalMotoristaTitle").textContent = "Adicionar Motorista";
+    $("editMotoristaId").value = "";
+    $("modalMotNome").value = "";
+    $("modalMotCpf").value = "";
+    $("modalMotLegacyId").value = "";
+    $("modalMotPlaca").value = "";
+    $("modalMotEmail").value = "";
+    $("modalMotTipo").value = "";
+    $("modalMotFretePadrao").value = "";
+    $("modalMotFreteCustom").value = "";
+    $("modalMotJustificativa").value = "";
+    $("divJustificativa").classList.add("hidden");
+    $("modalMotorista").classList.add("show");
+  }
+
+  function abrirModalEditarMotorista(id) {
+    const driver = cachedDrivers.find(d => d.id === id);
+    if (!driver) return;
+
+    $("modalMotoristaTitle").textContent = "Editar Motorista";
+    $("editMotoristaId").value = driver.id;
+    $("modalMotNome").value = driver.name || "";
+    $("modalMotCpf").value = driver.cpf || "";
+    $("modalMotLegacyId").value = driver.legacy_id || "";
+    $("modalMotPlaca").value = driver.placa || "";
+    $("modalMotEmail").value = driver.email || "";
+    $("modalMotTipo").value = driver.tipo_veiculo || "";
+
+    atualizarFretePadrao();
+
+    $("modalMotFreteCustom").value = driver.frete_customizado || "";
+    $("modalMotJustificativa").value = driver.justificativa_frete || "";
+
+    if (driver.precisa_justificativa) {
+      $("divJustificativa").classList.remove("hidden");
+    }
+
+    $("modalMotorista").classList.add("show");
+  }
+
+  function fecharModalMotorista() {
+    $("modalMotorista").classList.remove("show");
+  }
+
+  function atualizarFretePadrao() {
+    const tipo = $("modalMotTipo").value;
+    const fretePadrao = FRETES_PADRAO[tipo] || 0;
+    $("modalMotFretePadrao").value = fretePadrao;
+    validarFreteCustomizado();
+  }
+
+  function validarFreteCustomizado() {
+    const fretePadrao = Number($("modalMotFretePadrao").value || 0);
+    const freteCustom = Number($("modalMotFreteCustom").value || 0);
+
+    if (freteCustom > fretePadrao && freteCustom > 0) {
+      $("divJustificativa").classList.remove("hidden");
+      $("modalMotJustificativa").required = true;
+    } else {
+      $("divJustificativa").classList.add("hidden");
+      $("modalMotJustificativa").required = false;
+    }
+  }
+
+  async function salvarMotorista() {
+    const nome = $("modalMotNome").value.trim();
+    const cpf = $("modalMotCpf").value.trim();
+    const legacyId = $("modalMotLegacyId").value.trim();
+    const placa = $("modalMotPlaca").value.trim();
+    const email = $("modalMotEmail").value.trim();
+    const tipo = $("modalMotTipo").value;
+    const fretePadrao = Number($("modalMotFretePadrao").value || 0);
+    const freteCustom = Number($("modalMotFreteCustom").value || 0);
+    const justificativa = $("modalMotJustificativa").value.trim();
+
+    if (!nome || !cpf || !legacyId || !tipo) {
+      alert("Preencha todos os campos obrigatórios (*)");
+      return;
+    }
+
+    const precisaJustificativa = freteCustom > fretePadrao && freteCustom > 0;
+
+    if (precisaJustificativa && !justificativa) {
+      alert("Justificativa obrigatória quando frete customizado > frete padrão");
+      return;
+    }
+
+    const payload = {
+      name: nome,
+      cpf,
+      legacy_id: legacyId,
+      placa,
+      email,
+      tipo_veiculo: tipo,
+      frete_padrao: fretePadrao,
+      frete_customizado: freteCustom > 0 ? freteCustom : null,
+      justificativa_frete: precisaJustificativa ? justificativa : null,
+      precisa_justificativa: precisaJustificativa,
+      tabela_texto: `R$ ${(freteCustom > 0 ? freteCustom : fretePadrao).toFixed(2).replace('.', ',')}`
+    };
+
+    const editId = $("editMotoristaId").value;
+
+    if (editId) {
+      const { error } = await supabaseClient
+        .from("drivers")
+        .update(payload)
+        .eq("id", editId);
+
+      if (error) {
+        alert("Erro ao atualizar motorista: " + error.message);
+        return;
+      }
+
+      setStatus("Motorista atualizado!", "", "green");
+    } else {
+      const { error } = await supabaseClient
+        .from("drivers")
+        .insert(payload);
+
+      if (error) {
+        alert("Erro ao criar motorista: " + error.message);
+        return;
+      }
+
+      setStatus("Motorista criado!", "", "green");
+    }
+
+    fecharModalMotorista();
+    await loadDrivers();
+  }
+
+  function abrirModalConfirmarExclusaoMotorista(id) {
+    motoristaParaExcluir = id;
+    $("modalConfirmarExclusaoMotorista").classList.add("show");
+  }
+
+  function fecharModalConfirmarExclusaoMotorista() {
+    motoristaParaExcluir = null;
+    $("modalConfirmarExclusaoMotorista").classList.remove("show");
+  }
+
+  async function confirmarExclusaoMotorista() {
+    if (!motoristaParaExcluir) return;
+
+    const { error } = await supabaseClient
+      .from("drivers")
+      .delete()
+      .eq("id", motoristaParaExcluir);
+
+    if (error) {
+      alert("Erro ao excluir motorista: " + error.message);
+      return;
+    }
+
+    setStatus("Motorista excluído!", "", "green");
+    fecharModalConfirmarExclusaoMotorista();
+    await loadDrivers();
+  }
+
+  // =========================
+  // CRUD SELLERS
+  // =========================
+
+  function abrirModalNovoSeller() {
+    $("modalSellerTitle").textContent = "Adicionar Seller";
+    $("editSellerId").value = "";
+    $("modalSellerDop").value = "";
+    $("modalSellerNome").value = "";
+    $("modalSellerSoc").value = "";
+    $("modalSellerOperacao").value = "";
+    $("modalSellerEndereco").value = "";
+    $("modalSeller").classList.add("show");
+  }
+
+  function abrirModalEditarSeller(id) {
+    const seller = cachedSellers.find(s => s.id === id);
+    if (!seller) return;
+
+    $("modalSellerTitle").textContent = "Editar Seller";
+    $("editSellerId").value = seller.id;
+    $("modalSellerDop").value = seller.dop || "";
+    $("modalSellerNome").value = seller.nome || "";
+    $("modalSellerSoc").value = seller.soc || "";
+    $("modalSellerOperacao").value = seller.operacao || "";
+    $("modalSellerEndereco").value = seller.endereco || "";
+    $("modalSeller").classList.add("show");
+  }
+
+  function fecharModalSeller() {
+    $("modalSeller").classList.remove("show");
+  }
+
+  async function salvarSeller() {
+    const dop = $("modalSellerDop").value.trim();
+    const nome = $("modalSellerNome").value.trim();
+    const soc = $("modalSellerSoc").value;
+    const operacao = $("modalSellerOperacao").value;
+    const endereco = $("modalSellerEndereco").value.trim();
+
+    if (!dop || !nome || !soc) {
+      alert("Preencha DOP, Nome e SOC (campos obrigatórios)");
+      return;
+    }
+
+    const payload = {
+      dop: parseInt(dop),
+      nome,
+      soc,
+      operacao,
+      endereco
+    };
+
+    const editId = $("editSellerId").value;
+
+    if (editId) {
+      const { error } = await supabaseClient
+        .from("sellers")
+        .update(payload)
+        .eq("id", editId);
+
+      if (error) {
+        alert("Erro ao atualizar seller: " + error.message);
+        return;
+      }
+
+      setStatus("Seller atualizado!", "", "green");
+    } else {
+      const { error } = await supabaseClient
+        .from("sellers")
+        .insert(payload);
+
+      if (error) {
+        alert("Erro ao criar seller: " + error.message);
+        return;
+      }
+
+      setStatus("Seller criado!", "", "green");
+    }
+
+    fecharModalSeller();
+    await loadSellers();
+  }
+
+  function abrirModalConfirmarExclusaoSeller(id) {
+    sellerParaExcluir = id;
+    $("modalConfirmarExclusaoSeller").classList.add("show");
+  }
+
+  function fecharModalConfirmarExclusaoSeller() {
+    sellerParaExcluir = null;
+    $("modalConfirmarExclusaoSeller").classList.remove("show");
+  }
+
+  async function confirmarExclusaoSeller() {
+    if (!sellerParaExcluir) return;
+
+    const { error } = await supabaseClient
+      .from("sellers")
+      .delete()
+      .eq("id", sellerParaExcluir);
+
+    if (error) {
+      alert("Erro ao excluir seller: " + error.message);
+      return;
+    }
+
+    setStatus("Seller excluído!", "", "green");
+    fecharModalConfirmarExclusaoSeller();
+    await loadSellers();
+  }
+  // =========================
+  // EDITAR ROTA (COM CAMPOS INDIVIDUAIS POR STOP)
+  // =========================
+
+  async function abrirModalEditarRota(id) {
+    const rota = cachedRotas.find(r => r.id === id);
+    if (!rota) return;
+
+    rotaParaEditar = rota;
+    $("editRotaIdHidden").value = rota.id;
+
+    const info = `Data: ${rota.data} | SOC: ${rota.soc} | Motorista: ${rota.drivers?.name || "-"} | Status: ${rota.status}`;
+    $("editRotaInfoAtual").textContent = info;
+
+    // Carregar stops da rota
+    const { data: stops, error } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rota.id)
+      .order("ordem");
+
+    if (error) {
+      console.error("Erro ao carregar stops:", error);
+      return;
+    }
+
+    const container = $("editRotaStopsContainer");
+    container.innerHTML = "";
+
+    if (!stops || !stops.length) {
+      container.innerHTML = '<div class="text-slate-400 text-center py-4">Nenhum stop encontrado</div>';
+    } else {
+      for (const stop of stops) {
+        const sellerInfo = cachedSellers.find(s => s.dop === stop.seller_dop);
+        const sellerNome = sellerInfo ? sellerInfo.nome : `DOP ${stop.seller_dop}`;
+
+        const stopDiv = document.createElement("div");
+        stopDiv.className = "p-4 rounded-lg bg-slate-900 border border-slate-700";
+        stopDiv.innerHTML = `
+          <div class="mb-3">
+            <div class="font-bold text-lg">Stop #${stop.ordem} - ${sellerNome}</div>
+            <div class="text-xs text-slate-500 mt-1">DOP: ${stop.seller_dop}</div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">🔖 ID da Rota (Individual)</label>
+              <input type="text"
+                     value="${stop.rota_id || ''}"
+                     data-stop-id="${stop.id}"
+                     class="edit-stop-id w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="Ex: SP6_001 (opcional)" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">📝 Nome da Rota (Individual)</label>
+              <input type="text"
+                     value="${stop.rota_nome || ''}"
+                     class="edit-stop-nome w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="Ex: Rota Shopee (opcional)" />
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">📦 Volume</label>
+              <input type="number" step="0.01" min="0"
+                     value="${stop.volume_total || 0}"
+                     class="edit-stop-vol w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="0 (opcional)" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">📊 Sacas</label>
+              <input type="number" min="0"
+                     value="${stop.sacas || 0}"
+                     class="edit-stop-sacas w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="0 (opcional)" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">📦 Caixas</label>
+              <input type="number" min="0"
+                     value="${stop.caixas || 0}"
+                     class="edit-stop-caixas w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none"
+                     placeholder="0 (opcional)" />
+            </div>
+          </div>
+
+          <div class="mt-3 pt-3 border-t border-slate-800 text-xs text-slate-400">
+            Frete Atual: ${moneyBR(stop.frete_rateado)} |
+            Receita: ${moneyBR(stop.receita_estimada)} |
+            % Custo: ${pctBR(stop.rentabilidade_pct)}
+          </div>
+        `;
+
+        container.appendChild(stopDiv);
+      }
+    }
+
+    $("modalEditarRota").classList.add("show");
+  }
+
+  function fecharModalEditarRota() {
+    rotaParaEditar = null;
+    $("modalEditarRota").classList.remove("show");
+  }
+
+  async function salvarEdicaoRota() {
+    const rotaId = $("editRotaIdHidden").value;
+    if (!rotaId) return;
+
+    const stopRows = document.querySelectorAll("#editRotaStopsContainer > div");
+    const rotaOriginal = cachedRotas.find(r => r.id === rotaId);
+
+    if (!rotaOriginal) return;
+
+    // Atualizar cada stop INDIVIDUALMENTE com seus próprios dados
+    for (const row of stopRows) {
+      const idInput = row.querySelector(".edit-stop-id");
+      const nomeInput = row.querySelector(".edit-stop-nome");
+      const volInput = row.querySelector(".edit-stop-vol");
+      const sacasInput = row.querySelector(".edit-stop-sacas");
+      const caixasInput = row.querySelector(".edit-stop-caixas");
+
+      const stopId = idInput.dataset.stopId;
+      const stopRotaId = idInput.value.trim();
+      const stopRotaNome = nomeInput.value.trim();
+      const volume = Number(volInput.value || 0);
+      const sacas = Number(sacasInput.value || 0);
+      const caixas = Number(caixasInput.value || 0);
+
+      const sellerDopText = row.querySelector(".text-xs.text-slate-500").textContent;
+      const sellerDop = sellerDopText.replace("DOP: ", "").trim();
+      const taxa = getTaxa(rotaOriginal.soc, sellerDop);
+      const receita = calcReceita(volume, taxa);
+
+      // CRÍTICO: Salvar dados INDIVIDUAIS de cada stop
+      const { error: eStopUpdate } = await supabaseClient
+        .from("saida_stops")
+        .update({
+          rota_id: stopRotaId || null,           // ID PRÓPRIO deste stop
+          rota_nome: stopRotaNome || null,       // NOME PRÓPRIO deste stop
+          volume_total: volume,
+          sacas: sacas,
+          caixas: caixas,
+          receita_estimada: receita
+        })
+        .eq("id", stopId);
+
+      if (eStopUpdate) {
+        console.error("Erro ao atualizar stop:", eStopUpdate);
+      }
+    }
+
+    // Recalcular rateio e totais da rota
+    await recalcularRateioRota(rotaId);
+
+    setStatus("Rota atualizada!", "Todos os stops foram salvos individualmente", "green");
+    fecharModalEditarRota();
+    await loadRotas();
+  }
+
+  async function recalcularRateioRota(rotaId) {
+    const rota = cachedRotas.find(r => r.id === rotaId);
+    if (!rota) return;
+
+    const { data: stops } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rotaId);
+
+    if (!stops || !stops.length) return;
+
+    const volumeTotal = stops.reduce((sum, s) => sum + (s.volume_total || 0), 0);
+    const freteTotal = rota.frete_total;
+    let receitaTotal = 0;
+
+    for (const stop of stops) {
+      const taxa = getTaxa(rota.soc, stop.seller_dop);
+      const receita = calcReceita(stop.volume_total, taxa);
+      const freteRateado = volumeTotal > 0 ? (freteTotal * stop.volume_total) / volumeTotal : 0;
+      const pct = calcPct(freteRateado, receita);
+
+      receitaTotal += receita;
+
+      await supabaseClient
+        .from("saida_stops")
+        .update({
+          frete_rateado: freteRateado,
+          receita_estimada: receita,
+          rentabilidade_pct: pct
+        })
+        .eq("id", stop.id);
+    }
+
+    const pctGlobal = calcPct(freteTotal, receitaTotal);
+    await supabaseClient
+      .from("saidas")
+      .update({
+        is_milk_run: stops.length > 1,
+        receita_estimada: receitaTotal,
+        rentabilidade_pct: pctGlobal
+      })
+      .eq("id", rotaId);
+  }
+
+  // =========================
+  // REABRIR ROTA FECHADA
+  // =========================
+
+  async function reabrirRota(id) {
+    const rota = cachedRotas.find(r => r.id === id);
+    if (!rota) return;
+
+    const confirmacao = confirm(
+      '🔓 REABRIR ROTA FECHADA\n\n' +
+      'ID: ' + (rota.rota_id || 'Sem ID') + '\n' +
+      'Nome: ' + (rota.rota_nome || 'Sem nome') + '\n\n' +
+      'Esta rota já foi liberada para PAGAMENTO!\n\n' +
+      'Reabrir permitirá editar e excluir novamente.\n\n' +
+      'Deseja continuar?'
+    );
+
+    if (!confirmacao) return;
+
+    const { error } = await supabaseClient
+      .from('saidas')
+      .update({
+        status: 'ABERTO',
+        data_fechamento: null
+      })
+      .eq('id', id);
+
+    if (error) {
+      alert('Erro ao reabrir rota: ' + error.message);
+      return;
+    }
+
+    setStatus('Rota reaberta!', 'Status alterado para ABERTO', 'green');
+    await loadRotas();
+  }
+
+  // =========================
+  // EXCLUSÃO DE ROTAS
+  // =========================
+
+  function abrirModalConfirmarExclusaoRota(id) {
+    const rota = cachedRotas.find(r => r.id === id);
+
+    if (rota && rota.status === 'FECHADO') {
+      const confirmacao = confirm(
+        '⚠️ ATENÇÃO: Esta rota está FECHADA!\n\n' +
+        'ID: ' + (rota.rota_id || 'Sem ID') + '\n' +
+        'Nome: ' + (rota.rota_nome || 'Sem nome') + '\n\n' +
+        'Esta rota já foi liberada para PAGAMENTO.\n' +
+        'Excluir pode causar inconsistências financeiras!\n\n' +
+        'Tem ABSOLUTA CERTEZA que deseja excluir?\n\n' +
+        '⚠️ Esta ação NÃO pode ser desfeita!'
+      );
+
+      if (!confirmacao) {
+        return;
+      }
+    }
+
+    rotaParaExcluir = id;
+    $("modalConfirmarExclusaoRota").classList.add("show");
+  }
+
+  function fecharModalConfirmarExclusaoRota() {
+    rotaParaExcluir = null;
+    $("modalConfirmarExclusaoRota").classList.remove("show");
+  }
+
+  async function confirmarExclusaoRota() {
+    if (!rotaParaExcluir) return;
+
+    const { error } = await supabaseClient
+      .from("saidas")
+      .delete()
+      .eq("id", rotaParaExcluir);
+
+    if (error) {
+      alert("Erro ao excluir rota: " + error.message);
+      return;
+    }
+
+    setStatus("Rota excluída!", "", "green");
+    fecharModalConfirmarExclusaoRota();
+    await loadRotas();
+    await refreshCounts();
+  }
+  // =========================
+  // FECHAR ROTA (COM VALIDAÇÃO RIGOROSA)
+  // =========================
+
+
+  function fecharModalFecharRota() {
+    rotaParaFechar = null;
+    $("modalFecharRota").classList.remove("show");
+  }
+
+  async function confirmarFecharRota() {
+    if (!rotaParaFechar) return;
+
+    const rotaAtual = cachedRotas.find(r => r.id === rotaParaFechar);
+    if (!rotaAtual) return;
+
+    // Carregar stops para validação individual
+    const { data: stops, error: eStops } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rotaParaFechar);
+
+    if (eStops) {
+      alert("Erro ao validar stops da rota: " + eStops.message);
+      return;
+    }
+
+    if (!stops || stops.length === 0) {
+      alert("❌ Esta rota não possui stops cadastrados e não pode ser fechada.");
+      fecharModalFecharRota();
+      return;
+    }
+
+    // Validar ID, Nome, Volume e (Sacas ou Caixas) para CADA stop
+    const stopsIncompletos = stops.filter(s =>
+      !(s.rota_id || "").trim() ||
+      !(s.rota_nome || "").trim() ||
+      (s.volume_total || 0) <= 0 ||
+      ((s.sacas || 0) <= 0 && (s.caixas || 0) <= 0)
+    );
+
+    if (stopsIncompletos.length > 0) {
+      const listaSellers = stopsIncompletos.map(s => {
+        const info = cachedSellers.find(cs => cs.dop === s.seller_dop);
+        const problemas = [];
+        if (!(s.rota_id || "").trim()) problemas.push("ID vazio");
+        if (!(s.rota_nome || "").trim()) problemas.push("Nome vazio");
+        if ((s.volume_total || 0) <= 0) problemas.push("Volume zerado");
+        if ((s.sacas || 0) <= 0 && (s.caixas || 0) <= 0) problemas.push("Sacas E Caixas zerados");
+
+        return `Stop #${s.ordem} - ${info ? info.nome : `DOP ${s.seller_dop}`}: ${problemas.join(", ")}`;
+      }).join("\n- ");
+
+      alert(`❌ Esta rota não pode ser fechada!\n\nTodos os stops devem ter ID, Nome, Volume e (Sacas OU Caixas) preenchidos.\n\nProblemas encontrados:\n- ${listaSellers}\n\nPor favor, use o botão ✏️ Editar para completar as informações de cada stop.`);
+      fecharModalFecharRota();
+      return;
+    }
+
+    // Proceder com o fechamento
+    const resultado = await supabaseClient
+      .from('saidas')
+      .update({
+        status: 'FECHADO',
+        data_fechamento: new Date().toISOString()
+      })
+      .eq('id', rotaParaFechar);
+
+    if (resultado.error) {
+      alert('Erro ao fechar rota: ' + resultado.error.message);
+      return;
+    }
+
+    setStatus('Rota fechada!', 'Liberada para pagamento', 'green');
+    fecharModalFecharRota();
+    await loadRotas();
+  }
+
+  // =========================
+  // VISUALIZAÇÃO DETALHADA
+  // =========================
+
+ async function abrirModalFecharRota(rotaId) {
+    const rota = cachedRotas.find(r => r.id === rotaId);
+    if (!rota) return;
+
+    rotaParaFechar = rotaId;
+
+    // Carregar stops para mostrar IDs individuais
+    const { data: stops } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rotaId)
+      .order("ordem");
+
+    let identificacao = "";
+    let nome = "";
+
+    if (rota.is_milk_run && stops && stops.length > 0) {
+      // Milk Run: mostrar quantos stops
+      identificacao = `🔄 Milk Run - ${stops.length} rotas individuais`;
+      const idsUnicos = stops.filter(s => s.rota_id).map(s => s.rota_id);
+      if (idsUnicos.length > 0) {
+        nome = `IDs: ${idsUnicos.join(", ")}`;
+      } else {
+        nome = "IDs ainda não preenchidos";
+      }
+    } else if (stops && stops.length > 0) {
+      // Rota simples: mostrar ID do único stop
+      identificacao = stops[0].rota_id || "Sem ID";
+      nome = stops[0].rota_nome || "Sem nome";
+    } else {
+      identificacao = "Sem ID";
+      nome = "Sem nome";
+    }
+
+    $("fecharRotaIdentificacao").textContent = "ID: " + identificacao;
+    $("fecharRotaNome").textContent = "Nome: " + nome;
+
+    $("modalFecharRota").classList.add("show");
+  }
+
+  function fecharModalDetalhesRota() {
+    $("modalDetalhesRota").classList.remove("show");
+  }
+
+  async function carregarDetalhesRota(rota) {
+    const { data: stops, error } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rota.id)
+      .order("ordem");
+
+    if (error) {
+      console.error("Erro ao carregar stops:", error);
+      return;
+    }
+
+    const statusBadge = rota.status === 'FECHADO'
+      ? '<span class="status-badge-fechado">🔒 FECHADO</span>'
+      : '<span class="status-badge-aberto">🟡 ABERTO</span>';
+
+    const milkRunBadge = rota.is_milk_run
+      ? '<span class="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-semibold">🔄 Milk Run</span>'
+      : '';
+
+    let html = `
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-6 mb-6">
+        <div class="flex items-center gap-3 mb-4">
+          <h3 class="text-xl font-bold text-emerald-400">${rota.rota_id || "Sem ID"}</h3>
+          ${statusBadge}
+          ${milkRunBadge}
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <div><span class="text-slate-400">Nome da Rota:</span> <span class="font-bold text-slate-100">${rota.rota_nome || "-"}</span></div>
+          <div><span class="text-slate-400">Data:</span> <span class="font-semibold">${rota.data}</span></div>
+          <div><span class="text-slate-400">Motorista:</span> <span class="font-semibold">${rota.drivers?.name || "-"}</span></div>
+          <div><span class="text-slate-400">Placa:</span> <span class="font-semibold">${rota.drivers?.placa || "-"}</span></div>
+          <div><span class="text-slate-400">SOC:</span> <span class="font-semibold">${rota.soc}</span></div>
+          <div><span class="text-slate-400">Operação:</span> <span class="font-semibold">${rota.operacao}</span></div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-800 grid md:grid-cols-3 gap-4">
+          <div>
+            <div class="text-xs text-slate-400">Frete Total</div>
+            <div class="text-xl font-bold text-emerald-400">${moneyBR(rota.frete_total)}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Receita Estimada</div>
+            <div class="text-xl font-bold text-cyan-400">${moneyBR(rota.receita_estimada)}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">% Custo</div>
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full ${getDotClass(rota.rentabilidade_pct)}"></div>
+              <div class="text-xl font-bold">${pctBR(rota.rentabilidade_pct)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-6">
+        <h3 class="text-lg font-bold mb-4">📍 Stops da Rota (${stops.length})</h3>
+        <div class="space-y-3">
+    `;
+
+    for (const stop of stops) {
+      const sellerInfo = cachedSellers.find(s => s.dop === stop.seller_dop);
+      const sellerNome = sellerInfo ? sellerInfo.nome : `DOP ${stop.seller_dop}`;
+      const dotClass = getDotClass(stop.rentabilidade_pct);
+
+      html += `
+        <div class="p-4 rounded-lg bg-slate-900 border border-slate-700">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <div class="font-bold">Stop #${stop.ordem} - ${sellerNome}</div>
+              <div class="text-sm text-slate-400 mt-1">
+                Volume: ${stop.volume_total || 0} |
+                Sacas: ${stop.sacas || 0} |
+                Caixas: ${stop.caixas || 0}
+              </div>
+              <div class="text-xs text-emerald-400 mt-2">
+                🔖 ID: ${stop.rota_id || "-"} | 📝 Nome: ${stop.rota_nome || "-"}
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full ${dotClass}"></div>
+              <div class="font-bold">${pctBR(stop.rentabilidade_pct)}</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 text-sm pt-3 border-t border-slate-800">
+            <div>
+              <span class="text-slate-400">Frete Rateado:</span>
+              <span class="font-semibold text-emerald-400">${moneyBR(stop.frete_rateado)}</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Receita:</span>
+              <span class="font-semibold text-cyan-400">${moneyBR(stop.receita_estimada)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+
+    $("detalhesRotaConteudo").innerHTML = html;
+  }
+
+  // =========================
+  // ADICIONAR STOP EM ROTA EXISTENTE (MILK RUN)
+  // =========================
+
+  function abrirModalAddStopRota(rotaId) {
+    const rota = cachedRotas.find(r => r.id === rotaId);
+    if (!rota) return;
+
+    $("addStopRotaId").value = rotaId;
+    $("addStopRotaMotorista").textContent = `Motorista: ${rota.drivers?.name || "-"} (${rota.drivers?.placa || "-"})`;
+    $("addStopFreteTotalDisplay").textContent = moneyBR(rota.frete_total);
+
+    carregarInfoStopsRota(rotaId);
+
+    const sel = $("addStopSeller");
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    for (const s of cachedSellers) {
+      const opt = document.createElement("option");
+      opt.value = s.dop;
+      opt.textContent = `${s.dop} - ${s.nome} (${s.soc})`;
+      sel.appendChild(opt);
+    }
+
+    $("addStopIndividualId").value = "";
+    $("addStopIndividualNome").value = "";
+    $("addStopVolume").value = "";
+    $("addStopSacas").value = "";
+    $("addStopCaixas").value = "";
+
+    $("modalAddStopRota").classList.add("show");
+  }
+
+  function fecharModalAddStopRota() {
+    $("modalAddStopRota").classList.remove("show");
+  }
+
+  async function carregarInfoStopsRota(rotaId) {
+    const { data: stops } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rotaId);
+
+    const qtd = stops?.length || 0;
+    const volTotal = stops?.reduce((sum, s) => sum + (s.volume_total || 0), 0) || 0;
+
+    $("addStopQtdStops").textContent = qtd;
+    $("addStopVolTotal").textContent = volTotal.toFixed(0);
+  }
+  async function salvarNovoStopNaRota() {
+    const rotaId = $("addStopRotaId").value;
+    const sellerDop = $("addStopSeller").value;
+    const volume = Number($("addStopVolume").value || 0);
+    const sacas = Number($("addStopSacas").value || 0);
+    const caixas = Number($("addStopCaixas").value || 0);
+
+    // ID/Nome INDIVIDUAIS deste novo Stop
+    const individualId = $("addStopIndividualId").value.trim();
+    const individualNome = $("addStopIndividualNome").value.trim();
+
+    if (!rotaId || !sellerDop) {
+      alert("Selecione o seller!");
+      return;
+    }
+
+    const rota = cachedRotas.find(r => r.id === rotaId);
+    if (!rota) return;
+
+    const { data: stopsAtuais } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .eq("saida_id", rotaId)
+      .order("ordem");
+
+    const novaOrdem = (stopsAtuais?.length || 0) + 1;
+    const volumeTotalNovo = (stopsAtuais?.reduce((sum, s) => sum + (s.volume_total || 0), 0) || 0) + volume;
+
+    const taxa = getTaxa(rota.soc, sellerDop);
+    const receita = calcReceita(volume, taxa);
+
+    const freteTotal = rota.frete_total;
+    const freteRateado = volumeTotalNovo > 0 ? (freteTotal * volume) / volumeTotalNovo : 0;
+    const pct = calcPct(freteRateado, receita);
+
+    // CRÍTICO: Usar IDs INDIVIDUAIS do novo stop (NÃO compartilhar com stops existentes)
+    const { error: eStop } = await supabaseClient
+      .from("saida_stops")
+      .insert({
+        saida_id: rotaId,
+        ordem: novaOrdem,
+        seller_dop: sellerDop,
+        rota_id: individualId || null,        // ID PRÓPRIO deste stop
+        rota_nome: individualNome || null,    // NOME PRÓPRIO deste stop
+        sacas,
+        caixas,
+        volume_total: volume,
+        frete_rateado: freteRateado,
+        receita_estimada: receita,
+        rentabilidade_pct: pct
+      });
+
+    if (eStop) {
+      alert("Erro ao adicionar stop: " + eStop.message);
+      return;
+    }
+
+    await recalcularRateioRota(rotaId);
+
+    setStatus("Stop adicionado!", "Rateio recalculado automaticamente", "green");
+    fecharModalAddStopRota();
+    await loadRotas();
+  }
+
+  // =========================
+  // EXPORTAR PARA EXCEL
+  // =========================
+
+  async function exportarParaExcel() {
+    const data = $("rotaData").value;
+
+    if (!data) {
+      alert("Selecione uma data primeiro!");
+      return;
+    }
+
+    setStatus("Gerando Excel...", "Aguarde");
+
+    const { data: rotas, error } = await supabaseClient
+      .from("saidas")
+      .select(`*, drivers (name, placa, cpf)`)
+      .eq("data", data)
+      .order("rota_id");
+
+    if (error) {
+      alert("Erro ao buscar rotas: " + error.message);
+      return;
+    }
+
+    if (!rotas || !rotas.length) {
+      alert("Nenhuma rota encontrada para esta data!");
+      return;
+    }
+
+    const rotasComStops = [];
+
+    for (const rota of rotas) {
+      const { data: stops } = await supabaseClient
+        .from("saida_stops")
+        .select("*")
+        .eq("saida_id", rota.id)
+        .order("ordem");
+
+      rotasComStops.push({ ...rota, stops: stops || [] });
+    }
+
+    const excelData = [];
+
+    for (const rota of rotasComStops) {
+      for (const stop of rota.stops) {
+        excelData.push({
+          "Data": rota.data,
+          "ID Rota Stop": stop.rota_id || "Sem ID",
+          "Nome Rota Stop": stop.rota_nome || "Sem nome",
+          "Motorista": rota.drivers?.name || "-",
+          "CPF": rota.drivers?.cpf || "-",
+          "Placa": rota.drivers?.placa || "-",
+          "Tipo Veículo": rota.tipo_veiculo || "-",
+          "SOC": rota.soc,
+          "Operação": rota.operacao,
+          "Status": rota.status,
+          "Milk Run": rota.is_milk_run ? "SIM" : "NÃO",
+          "Stop #": stop.ordem,
+          "DOP": stop.seller_dop,
+          "Volume": stop.volume_total || 0,
+          "Sacas": stop.sacas || 0,
+          "Caixas": stop.caixas || 0,
+          "Frete Rateado": (stop.frete_rateado || 0).toFixed(2),
+          "Receita": (stop.receita_estimada || 0).toFixed(2),
+          "% Custo": (stop.rentabilidade_pct || 0).toFixed(2) + "%",
+          "Frete Total Rota": rota.frete_total.toFixed(2),
+          "Receita Total Rota": rota.receita_estimada.toFixed(2)
+        });
+      }
+    }
+
+    const headers = Object.keys(excelData[0]);
+    let csv = headers.join(",") + "\n";
+
+    for (const row of excelData) {
+      const values = headers.map(h => {
+        const val = row[h];
+        if (typeof val === 'string' && val.includes(',')) {
+          return `"${val}"`;
+        }
+        return val;
+      });
+      csv += values.join(",") + "\n";
+    }
+
+    const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Programacao_${data}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setStatus("Excel gerado!", "Download iniciado", "green");
+  }
+
+  // =========================
+  // FUNÇÕES AUXILIARES
+  // =========================
+
+  function setTipoRota(milkRun) {
+    isMilkRun = milkRun;
+
+    if (milkRun) {
+      $("btnRotaSimples").classList.remove("active");
+      $("btnMilkRun").classList.add("active");
+      $("rotaSimplesForm").classList.add("hidden");
+      $("milkRunForm").classList.remove("hidden");
+    } else {
+      $("btnRotaSimples").classList.add("active");
+      $("btnMilkRun").classList.remove("active");
+      $("rotaSimplesForm").classList.remove("hidden");
+      $("milkRunForm").classList.add("hidden");
+    }
+  }
+
+  function onMotoristaSelected() {
+    const input = $("motoristaSearch").value;
+    const driver = cachedDrivers.find(d => `${d.name} | ${d.placa || ""}` === input);
+
+    if (!driver) {
+      selectedDriver = null;
+      $("motoristaSelecionado").classList.add("hidden");
+      return;
+    }
+
+    selectedDriver = driver;
+
+    $("motoristaInfo").textContent = driver.name;
+    $("motoristaTipo").textContent = driver.tipo_veiculo || "-";
+    $("motoristaPlaca").textContent = driver.placa || "-";
+    $("motoristaFrete").textContent = driver.tabela_texto || "R$ 0,00";
+
+    $("motoristaSelecionado").classList.remove("hidden");
+
+    const frete = parseBRL(driver.tabela_texto);
+    if (frete > 0) {
+      $("simplesFrete").value = frete.toFixed(2);
+      $("milkRunFrete").value = frete.toFixed(2);
+    }
+
+    recalcSimples();
+    recalcMilkRun();
+  }
+
+  function recalcSimples() {
+    const soc = $("rotaSoc").value;
+    const dop = $("simplesSellerDop").value;
+    const volume = Number($("simplesVolume").value || 0);
+    const frete = Number($("simplesFrete").value || 0);
+
+    if (!dop || volume <= 0) {
+      $("simplesReceita").textContent = "R$ 0,00";
+      $("simplesPct").textContent = "0,00%";
+      $("simplesDot").className = "w-3 h-3 rounded-full bg-slate-500";
+      $("simplesStatus").textContent = "-";
+      return;
+    }
+
+    const taxa = getTaxa(soc, dop);
+    const receita = calcReceita(volume, taxa);
+    const pct = calcPct(frete, receita);
+
+    $("simplesReceita").textContent = moneyBR(receita);
+    $("simplesPct").textContent = pctBR(pct);
+    $("simplesDot").className = "w-3 h-3 rounded-full " + getDotClass(pct);
+    $("simplesStatus").textContent = getStatusText(pct);
+  }
+
+  function addStop() {
+    stopCounter++;
+    const stopId = `stop_${stopCounter}`;
+
+    const div = document.createElement("div");
+    div.id = stopId;
+    div.className = "p-4 rounded-lg bg-slate-900 border border-slate-800";
+
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <div class="font-semibold">Stop #${stopCounter}</div>
+        <button class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-sm" onclick="removeStop('${stopId}')">
+          ❌
+        </button>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-3">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Seller</label>
+          <select class="stop-seller w-full px-3 py-2 rounded bg-slate-950 border border-slate-800">
+            <option value="">Selecione...</option>
+            ${cachedSellers.map(s => `<option value="${s.dop}">${s.dop} - ${s.nome}</option>`).join("")}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Volume</label>
+          <input type="number" step="0.01" min="0" class="stop-volume w-full px-3 py-2 rounded bg-slate-950 border border-slate-800" placeholder="0 (opcional)" />
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Sacas</label>
+          <input type="number" min="0" class="stop-sacas w-full px-3 py-2 rounded bg-slate-950 border border-slate-800" placeholder="0 (opcional)" />
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Caixas</label>
+          <input type="number" min="0" class="stop-caixas w-full px-3 py-2 rounded bg-slate-950 border border-slate-800" placeholder="0 (opcional)" />
+        </div>
+      </div>
+
+      <div class="mt-3 pt-3 border-t border-slate-800 grid md:grid-cols-3 gap-3 text-sm">
+        <div>
+          <span class="text-slate-400">Frete:</span>
+          <span class="stop-frete-rateado font-semibold ml-2">R$ 0,00</span>
+        </div>
+        <div>
+          <span class="text-slate-400">Receita:</span>
+          <span class="stop-receita font-semibold ml-2">R$ 0,00</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="stop-dot w-3 h-3 rounded-full bg-slate-500"></div>
+          <span class="stop-pct font-semibold">0,00%</span>
+        </div>
+      </div>
+    `;
+
+    $("stopsContainer").appendChild(div);
+    $("stopsEmpty").classList.add("hidden");
+
+    div.querySelector(".stop-seller").addEventListener("change", recalcMilkRun);
+    div.querySelector(".stop-volume").addEventListener("input", recalcMilkRun);
+    div.querySelector(".stop-sacas").addEventListener("input", recalcMilkRun);
+    div.querySelector(".stop-caixas").addEventListener("input", recalcMilkRun);
+
+    recalcMilkRun();
+  }
+
+  window.removeStop = function(stopId) {
+    const elem = document.getElementById(stopId);
+    if (elem) {
+      elem.remove();
+      if (!$("stopsContainer").children.length) {
+        $("stopsEmpty").classList.remove("hidden");
+      }
+      recalcMilkRun();
+    }
+  }
+
+  function readStops() {
+    const stops = [];
+    const container = $("stopsContainer");
+
+    for (let i = 0; i < container.children.length; i++) {
+      const stopDiv = container.children[i];
+      const seller = stopDiv.querySelector(".stop-seller").value;
+      const volume = Number(stopDiv.querySelector(".stop-volume").value || 0);
+      const sacas = Number(stopDiv.querySelector(".stop-sacas").value || 0);
+      const caixas = Number(stopDiv.querySelector(".stop-caixas").value || 0);
+
+      if (seller) {
+        stops.push({
+          ordem: i + 1,
+          seller_dop: seller,
+          volume,
+          sacas,
+          caixas,
+          elem: stopDiv
+        });
+      }
+    }
+
+    return stops;
+  }
+
+  function recalcMilkRun() {
+    const soc = $("rotaSoc").value;
+    const freteTotal = Number($("milkRunFrete").value || 0);
+    const stops = readStops();
+
+    if (!stops.length) {
+      $("milkRunVolTotal").textContent = "0";
+      $("milkRunReceitaTotal").textContent = "R$ 0,00";
+      $("milkRunPct").textContent = "0,00%";
+      $("milkRunDot").className = "w-3 h-3 rounded-full bg-slate-500";
+      $("milkRunStatus").textContent = "-";
+      return;
+    }
+
+    const totalVol = stops.reduce((sum, s) => sum + s.volume, 0);
+    let receitaTotal = 0;
+
+    for (const stop of stops) {
+      const taxa = getTaxa(soc, stop.seller_dop);
+      const receita = calcReceita(stop.volume, taxa);
+      const freteRateado = totalVol > 0 ? (freteTotal * (stop.volume / totalVol)) : 0;
+      const pct = calcPct(freteRateado, receita);
+
+      receitaTotal += receita;
+
+      stop.elem.querySelector(".stop-frete-rateado").textContent = moneyBR(freteRateado);
+      stop.elem.querySelector(".stop-receita").textContent = moneyBR(receita);
+      stop.elem.querySelector(".stop-pct").textContent = pctBR(pct);
+      stop.elem.querySelector(".stop-dot").className = "w-3 h-3 rounded-full " + getDotClass(pct);
+    }
+
+    const pctGlobal = calcPct(freteTotal, receitaTotal);
+
+    $("milkRunVolTotal").textContent = totalVol.toFixed(0);
+    $("milkRunReceitaTotal").textContent = moneyBR(receitaTotal);
+    $("milkRunPct").textContent = pctBR(pctGlobal);
+    $("milkRunDot").className = "w-3 h-3 rounded-full " + getDotClass(pctGlobal);
+    $("milkRunStatus").textContent = getStatusText(pctGlobal);
+  }
+
+  // =========================
+  // CRIAR ROTA (SEM VALIDAÇÃO DE CAMPOS VAZIOS)
+  // =========================
+
+  async function criarRota() {
+    $("formMsg").textContent = "";
+
+    if (!selectedDriver) {
+      $("formMsg").textContent = "❌ Selecione um motorista";
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    const data = $("rotaData").value;
+    const soc = $("rotaSoc").value;
+    const operacao = $("rotaOperacao").value;
+
+    if (!data || !soc) {
+      $("formMsg").textContent = "❌ Preencha data e SOC";
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    if (isMilkRun) {
+      await criarMilkRun(data, soc, operacao);
+    } else {
+      await criarRotaSimples(data, soc, operacao);
+    }
+  }
+
+  async function criarRotaSimples(data, soc, operacao) {
+    const dop = $("simplesSellerDop").value;
+    const frete = Number($("simplesFrete").value || 0);
+    const volume = Number($("simplesVolume").value || 0);
+    const sacas = Number($("simplesSacas").value || 0);
+    const caixas = Number($("simplesCaixas").value || 0);
+    const rotaId = $("simplesRotaId").value.trim();
+    const rotaNome = $("simplesRotaNome").value.trim();
+
+    if (!dop) {
+      $("formMsg").textContent = "❌ Selecione um seller";
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    // SEM VALIDAÇÃO DE CAMPOS VAZIOS - permite salvar tudo em branco
+
+    const taxa = getTaxa(soc, dop);
+    const receita = calcReceita(volume, taxa);
+    const pct = calcPct(frete, receita);
+
+    const payload = {
+      data,
+      operacao,
+      soc,
+      motorista_id: selectedDriver.id,
+      motorista_legacy_id: selectedDriver.legacy_id,
+      tipo_veiculo: selectedDriver.tipo_veiculo,
+      is_milk_run: false,
+      status: "ABERTO",
+      frete_total: frete,
+      receita_estimada: receita,
+      rentabilidade_pct: pct
+    };
+
+    const { data: saida, error: eSaida } = await supabaseClient
+      .from("saidas")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (eSaida) {
+      $("formMsg").textContent = "❌ Erro ao criar saída: " + eSaida.message;
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    const stopPayload = {
+      saida_id: saida.id,
+      ordem: 1,
+      seller_dop: dop,
+      rota_id: rotaId || null,
+      rota_nome: rotaNome || null,
+      sacas,
+      caixas,
+      volume_total: volume,
+      frete_rateado: frete,
+      receita_estimada: receita,
+      rentabilidade_pct: pct
+    };
+
+    const { error: eStop } = await supabaseClient
+      .from("saida_stops")
+      .insert(stopPayload);
+
+    if (eStop) {
+      $("formMsg").textContent = "❌ Erro ao criar stop: " + eStop.message;
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    $("formMsg").textContent = "✅ Rota criada com sucesso!";
+    $("formMsg").className = "text-sm text-emerald-400";
+
+    await loadRotas();
+    await refreshCounts();
+    limparFormulario();
+  }
+
+  async function criarMilkRun(data, soc, operacao) {
+    const freteTotal = Number($("milkRunFrete").value || 0);
+    const stops = readStops();
+
+    if (!stops.length) {
+      $("formMsg").textContent = "❌ Adicione pelo menos 1 stop";
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    // SEM VALIDAÇÃO DE CAMPOS VAZIOS - permite salvar tudo em branco
+
+    const totalVol = stops.reduce((sum, s) => sum + s.volume, 0);
+    let receitaTotal = 0;
+
+    const stopsPayload = stops.map(stop => {
+      const taxa = getTaxa(soc, stop.seller_dop);
+      const receita = calcReceita(stop.volume, taxa);
+      const freteRateado = totalVol > 0 ? (freteTotal * (stop.volume / totalVol)) : 0;
+      const pct = calcPct(freteRateado, receita);
+
+      receitaTotal += receita;
+
+      return {
+        ordem: stop.ordem,
+        seller_dop: stop.seller_dop,
+        rota_id: null,
+        rota_nome: null,
+        sacas: stop.sacas,
+        caixas: stop.caixas,
+        volume_total: stop.volume,
+        frete_rateado: freteRateado,
+        receita_estimada: receita,
+        rentabilidade_pct: pct
+      };
+    });
+
+    const pctGlobal = calcPct(freteTotal, receitaTotal);
+
+    const payload = {
+      data,
+      operacao,
+      soc,
+      motorista_id: selectedDriver.id,
+      motorista_legacy_id: selectedDriver.legacy_id,
+      tipo_veiculo: selectedDriver.tipo_veiculo,
+      is_milk_run: true,
+      status: "ABERTO",
+      frete_total: freteTotal,
+      receita_estimada: receitaTotal,
+      rentabilidade_pct: pctGlobal
+    };
+
+    const { data: saida, error: eSaida } = await supabaseClient
+      .from("saidas")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (eSaida) {
+      $("formMsg").textContent = "❌ Erro ao criar saída: " + eSaida.message;
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    for (const stop of stopsPayload) {
+      stop.saida_id = saida.id;
+    }
+
+    const { error: eStops } = await supabaseClient
+      .from("saida_stops")
+      .insert(stopsPayload);
+
+    if (eStops) {
+      $("formMsg").textContent = "❌ Erro ao criar stops: " + eStops.message;
+      $("formMsg").className = "text-sm text-red-400";
+      return;
+    }
+
+    $("formMsg").textContent = "✅ Milk Run criado com sucesso!";
+    $("formMsg").className = "text-sm text-emerald-400";
+
+    await loadRotas();
+    await refreshCounts();
+    limparFormulario();
+  }
+
+  function limparFormulario() {
+    $("motoristaSearch").value = "";
+    selectedDriver = null;
+    $("motoristaSelecionado").classList.add("hidden");
+
+    $("simplesSellerDop").value = "";
+    $("simplesFrete").value = "";
+    $("simplesVolume").value = "";
+    $("simplesSacas").value = "";
+    $("simplesCaixas").value = "";
+    $("simplesRotaId").value = "";
+    $("simplesRotaNome").value = "";
+
+    $("milkRunFrete").value = "";
+    $("stopsContainer").innerHTML = "";
+    $("stopsEmpty").classList.remove("hidden");
+
+    recalcSimples();
+    recalcMilkRun();
+  }
+
+  // =========================
+  // =========================
+  // BOOT + EVENT LISTENERS
+  // =========================
+
+  async function boot() {
+    setStatus("Iniciando sistema...");
+
+    $("rotaData").value = todayISO();
+
+    $("btnLogin").addEventListener("click", login);
+    $("btnSignup").addEventListener("click", signup);
+    $("btnLogout").addEventListener("click", logout);
+
+    $("tabOperacional").addEventListener("click", () => showTab("operacional"));
+    $("tabCadastros").addEventListener("click", () => showTab("cadastros"));
+    $("tabAnalytics").addEventListener("click", () => showTab("analytics"));
+
+    $("btnRotaSimples").addEventListener("click", () => setTipoRota(false));
+    $("btnMilkRun").addEventListener("click", () => setTipoRota(true));
+
+    $("motoristaSearch").addEventListener("change", onMotoristaSelected);
+
+    $("simplesSellerDop").addEventListener("change", recalcSimples);
+    $("simplesFrete").addEventListener("input", recalcSimples);
+    $("simplesVolume").addEventListener("input", recalcSimples);
+
+    $("milkRunFrete").addEventListener("input", recalcMilkRun);
+    $("btnAddStop").addEventListener("click", addStop);
+
+    $("btnLimparForm").addEventListener("click", limparFormulario);
+    $("btnCriarRota").addEventListener("click", criarRota);
+    $("btnRecarregar").addEventListener("click", async () => {
+      await loadDrivers();
+      await loadSellers();
+      await loadRotas();
+      await refreshCounts();
+      setStatus("Recarregado!", "", "green");
+    });
+
+    // EVENT LISTENERS PARA ANALYTICS
+    $("analyticsPeriodo").addEventListener("change", atualizarAnalytics);
+    $("analyticsOperacao").addEventListener("change", atualizarAnalytics);
+
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    if (error) return setStatus("Erro ao verificar sessão", error.message, "red");
+
+    if (session?.user) onLoggedIn(session.user);
+    else onLoggedOut();
+  }
+
+  function onLoggedOut() {
+    $("loginCard").classList.remove("hidden");
+    $("appCard").classList.add("hidden");
+    $("btnLogout").classList.add("hidden");
+    $("userInfo").classList.add("hidden");
+    setStatus("Aguardando login...", "Entre com suas credenciais");
+  }
+
+  async function onLoggedIn(user) {
+    $("loginCard").classList.add("hidden");
+    $("appCard").classList.remove("hidden");
+    $("btnLogout").classList.remove("hidden");
+    $("userInfo").classList.remove("hidden");
+    $("userEmail").textContent = user.email;
+
+    setStatus("Carregando dados...", "Aguarde", "yellow");
+
+    await Promise.all([
+      loadDrivers(),
+      loadSellers(),
+      loadRotas()
+    ]);
+
+    await refreshCounts();
+    setStatus("Sistema pronto!", "Tudo carregado com sucesso", "green");
+
+    showTab("operacional");
+
+    // CARREGAR ANALYTICS APÓS 1 SEGUNDO
+    setTimeout(() => atualizarAnalytics(), 1000);
+  }
+
+  async function login() {
+    const email = $("loginEmail").value.trim();
+    const password = $("loginPassword").value;
+    if (!email || !password) return setStatus("Preencha email e senha", "", "red");
+
+    setStatus("Entrando...", "Autenticando");
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) return setStatus("Erro no login", error.message, "red");
+
+    onLoggedIn(data.user);
+  }
+
+  async function signup() {
+    const email = $("loginEmail").value.trim();
+    const password = $("loginPassword").value;
+    if (!email || !password) return setStatus("Preencha email e senha", "", "red");
+
+    setStatus("Criando conta...");
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    if (error) return setStatus("Erro ao criar conta", error.message, "red");
+
+    setStatus("Conta criada!", "Faça login para continuar", "green");
+    if (data?.session?.user) onLoggedIn(data.session.user);
+  }
+
+  async function logout() {
+    await supabaseClient.auth.signOut();
+    onLoggedOut();
+  }
+
+  function showTab(tab) {
+    if (tab === "operacional") {
+      $("pageOperacional").classList.remove("hidden");
+      $("pageCadastros").classList.add("hidden");
+      $("pageAnalytics").classList.add("hidden");
+      $("tabOperacional").classList.add("active");
+      $("tabCadastros").classList.remove("active");
+      $("tabAnalytics").classList.remove("active");
+    } else if (tab === "cadastros") {
+      $("pageOperacional").classList.add("hidden");
+      $("pageCadastros").classList.remove("hidden");
+      $("pageAnalytics").classList.add("hidden");
+      $("tabOperacional").classList.remove("active");
+      $("tabCadastros").classList.add("active");
+      $("tabAnalytics").classList.remove("active");
+    } else if (tab === "analytics") {
+      $("pageOperacional").classList.add("hidden");
+      $("pageCadastros").classList.add("hidden");
+      $("pageAnalytics").classList.remove("hidden");
+      $("tabOperacional").classList.remove("active");
+      $("tabCadastros").classList.remove("active");
+      $("tabAnalytics").classList.add("active");
+    }
+  }
+
+  // =========================
+  // ANALYTICS E GRÁFICOS
+  // =========================
+
+  // Constantes de operações
+  const DOPS_INTERIOR = [1466, 3233, 3229, 3167];
+  const DOPS_RJ = [5609, 4408, 4320, 3900];
+
+  function getOperacaoPorDop(dop) {
+    if (DOPS_INTERIOR.includes(parseInt(dop))) return 'SP_INTERIOR';
+    if (DOPS_RJ.includes(parseInt(dop))) return 'RJ';
+    return 'SP_CAPITAL';
+  }
+
+  function getTaxaPorDop(dop) {
+  const dopNum = parseInt(dop);
+
+  // Exceção: DOP 1466 (Limeira) tem taxa diferente
+  if (dopNum === 1466) return 0.74;
+
+  // Outros DOPs do Interior
+  if (DOPS_INTERIOR.includes(dopNum)) return 1.63;
+
+  // Rio de Janeiro
+  if (DOPS_RJ.includes(dopNum)) return 0.74;
+
+  // SP Capital (padrão)
+  return 0.61;
+}
+
+  let chartEvolucao = null;
+  let chartMotoristas = null;
+  let chartSOC = null;
+  let chartSellers = null;
+  let chartMilkRun = null;
+  let chartVeiculos = null;
+
+  async function atualizarAnalytics() {
+    const periodo = parseInt($("analyticsPeriodo").value || 30);
+    const operacaoFiltro = $("analyticsOperacao").value;
+
+    const hoje = new Date();
+    const dataInicio = new Date(hoje);
+    dataInicio.setDate(dataInicio.getDate() - periodo);
+
+    const dataInicioISO = dataInicio.toISOString().split('T')[0];
+
+    // Buscar rotas do período
+    const { data: rotas, error } = await supabaseClient
+      .from("saidas")
+      .select(`*, drivers (name)`)
+      .gte("data", dataInicioISO)
+      .order("data");
+
+    if (error) {
+      console.error("Erro ao carregar analytics:", error);
+      return;
+    }
+
+    // Buscar stops
+    const rotasIds = rotas.map(r => r.id);
+    const { data: allStops } = await supabaseClient
+      .from("saida_stops")
+      .select("*")
+      .in("saida_id", rotasIds);
+
+    // FILTRAR POR OPERAÇÃO
+    let rotasFiltradas = rotas;
+    let stopsFiltrados = allStops;
+
+    if (operacaoFiltro !== 'TODAS') {
+      // Filtrar stops por operação
+      stopsFiltrados = allStops.filter(stop => {
+        const operacao = getOperacaoPorDop(stop.seller_dop);
+        return operacao === operacaoFiltro;
+      });
+
+      // Pegar IDs das rotas que têm pelo menos 1 stop da operação
+      const rotasFiltroIds = [...new Set(stopsFiltrados.map(s => s.saida_id))];
+      rotasFiltradas = rotas.filter(r => rotasFiltroIds.includes(r.id));
+    }
+
+    await renderizarKPIs(rotasFiltradas, stopsFiltrados);
+    await renderizarGraficoEvolucao(rotasFiltradas, stopsFiltrados);
+    await renderizarGraficoMotoristas(rotasFiltradas, stopsFiltrados);
+    await renderizarGraficoSOC(stopsFiltrados);
+    await renderizarGraficoSellers(stopsFiltrados);
+    await renderizarGraficoMilkRun(rotasFiltradas);
+    await renderizarGraficoVeiculos(rotasFiltradas);
+    await renderizarHeatmap(rotasFiltradas);
+    await renderizarInsights(rotasFiltradas, stopsFiltrados);
+  }
+  // =========================
+  // KPIs PRINCIPAIS
+  // =========================
+
+  async function renderizarKPIs(rotas, stops) {
+    // Recalcular totais baseado nos stops filtrados
+    const receitaTotal = stops.reduce((sum, s) => sum + (s.receita_estimada || 0), 0);
+    const freteTotal = stops.reduce((sum, s) => sum + (s.frete_rateado || 0), 0);
+    const custoMedio = receitaTotal > 0 ? (freteTotal / receitaTotal) * 100 : 0;
+    const totalRotas = rotas.length;
+    const milkRunCount = rotas.filter(r => r.is_milk_run).length;
+
+    $("kpiReceitaTotal").textContent = moneyBR(receitaTotal);
+    $("kpiFreteTotal").textContent = moneyBR(freteTotal);
+    $("kpiCustoMedio").textContent = pctBR(custoMedio);
+    $("kpiTotalRotas").textContent = totalRotas;
+
+    // Semáforo custo médio
+    $("kpiCustoDot").className = "w-3 h-3 rounded-full " + getDotClass(custoMedio);
+    $("kpiCustoStatus").textContent = getStatusText(custoMedio);
+
+    // Estatísticas extras
+    $("kpiReceitaVariacao").textContent = `${totalRotas} rotas analisadas`;
+    $("kpiFreteVariacao").textContent = `Ticket médio: ${moneyBR(totalRotas > 0 ? freteTotal / totalRotas : 0)}`;
+    $("kpiRotasMilkRun").textContent = `${milkRunCount} Milk Runs (${totalRotas > 0 ? ((milkRunCount / totalRotas) * 100).toFixed(1) : 0}%)`;
+  }
+
+  // =========================
+  // GRÁFICO: EVOLUÇÃO TEMPORAL
+  // =========================
+
+  async function renderizarGraficoEvolucao(rotas, stops) {
+    const dadosPorDia = {};
+
+    // Agrupar stops por data da rota
+    for (const stop of stops) {
+      const rota = rotas.find(r => r.id === stop.saida_id);
+      if (!rota) continue;
+
+      const data = rota.data;
+      if (!dadosPorDia[data]) {
+        dadosPorDia[data] = { receita: 0, frete: 0 };
+      }
+      dadosPorDia[data].receita += stop.receita_estimada || 0;
+      dadosPorDia[data].frete += stop.frete_rateado || 0;
+    }
+
+    const labels = Object.keys(dadosPorDia).sort();
+    const dataReceita = labels.map(d => dadosPorDia[d].receita);
+    const dataFrete = labels.map(d => dadosPorDia[d].frete);
+
+    if (chartEvolucao) chartEvolucao.destroy();
+
+    const ctx = document.getElementById('chartEvolucao').getContext('2d');
+    chartEvolucao = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels.map(d => {
+          const [y, m, day] = d.split('-');
+          return `${day}/${m}`;
+        }),
+        datasets: [
+          {
+            label: 'Receita',
+            data: dataReceita,
+            borderColor: 'rgb(16, 185, 129)',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4,
+            fill: true
+          },
+          {
+            label: 'Frete',
+            data: dataFrete,
+            borderColor: 'rgb(251, 191, 36)',
+            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+            tension: 0.4,
+            fill: true
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: { color: '#e2e8f0' }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return context.dataset.label + ': R$ ' + context.parsed.y.toFixed(2);
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: '#94a3b8',
+              callback: function(value) {
+                return 'R$ ' + value.toFixed(0);
+              }
+            },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          },
+          x: {
+            ticks: { color: '#94a3b8' },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          }
+        }
+      }
+    });
+  }
+
+  // =========================
+  // GRÁFICO: MOTORISTAS
+  // =========================
+
+  async function renderizarGraficoMotoristas(rotas, stops) {
+    const dadosPorMotorista = {};
+
+    // Agrupar stops por motorista
+    for (const stop of stops) {
+      const rota = rotas.find(r => r.id === stop.saida_id);
+      if (!rota) continue;
+
+      const nomeMotorista = rota.drivers?.name || "Sem motorista";
+      if (!dadosPorMotorista[nomeMotorista]) {
+        dadosPorMotorista[nomeMotorista] = { receita: 0, frete: 0, count: 0 };
+      }
+      dadosPorMotorista[nomeMotorista].receita += stop.receita_estimada || 0;
+      dadosPorMotorista[nomeMotorista].frete += stop.frete_rateado || 0;
+      dadosPorMotorista[nomeMotorista].count += 1;
+    }
+
+    const motoristas = Object.keys(dadosPorMotorista).map(nome => {
+      const d = dadosPorMotorista[nome];
+      const pct = d.receita > 0 ? (d.frete / d.receita) * 100 : 0;
+      return { nome, pct, count: d.count };
+    });
+
+    motoristas.sort((a, b) => a.pct - b.pct);
+    const top10 = motoristas.slice(0, 10);
+
+    const labels = top10.map(m => m.nome);
+    const data = top10.map(m => m.pct);
+    const colors = top10.map(m => {
+      if (m.pct <= 28) return 'rgba(16, 185, 129, 0.8)';
+      if (m.pct <= 30) return 'rgba(251, 191, 36, 0.8)';
+      return 'rgba(239, 68, 68, 0.8)';
+    });
+
+    if (chartMotoristas) chartMotoristas.destroy();
+
+    const ctx = document.getElementById('chartMotoristas').getContext('2d');
+    chartMotoristas = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '% Custo',
+          data: data,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.8', '1')),
+          borderWidth: 2
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return context.parsed.x.toFixed(2) + '%';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: 35,
+            ticks: {
+              color: '#94a3b8',
+              callback: function(value) {
+                return value + '%';
+              }
+            },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          },
+          y: {
+            ticks: { color: '#94a3b8' },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  // =========================
+  // GRÁFICO: SOC (PIZZA)
+  // =========================
+
+  async function renderizarGraficoSOC(stops) {
+    const dadosPorSOC = {};
+
+    for (const stop of stops || []) {
+      const rota = cachedRotas.find(r => r.id === stop.saida_id);
+      const soc = rota?.soc || "Desconhecido";
+
+      if (!dadosPorSOC[soc]) {
+        dadosPorSOC[soc] = 0;
+      }
+      dadosPorSOC[soc] += stop.volume_total || 0;
+    }
+
+    const labels = Object.keys(dadosPorSOC);
+    const data = Object.values(dadosPorSOC);
+
+    const colors = [
+      'rgba(16, 185, 129, 0.8)',
+      'rgba(59, 130, 246, 0.8)',
+      'rgba(251, 191, 36, 0.8)',
+      'rgba(168, 85, 247, 0.8)',
+      'rgba(239, 68, 68, 0.8)'
+    ];
+
+    if (chartSOC) chartSOC.destroy();
+
+    const ctx = document.getElementById('chartSOC').getContext('2d');
+    chartSOC = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.8', '1')),
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#e2e8f0', padding: 15 }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const value = context.parsed;
+                const pct = ((value / total) * 100).toFixed(1);
+                return context.label + ': ' + value.toFixed(0) + ' (' + pct + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // =========================
+  // GRÁFICO: TOP SELLERS
+  // =========================
+
+  async function renderizarGraficoSellers(stops) {
+    const dadosPorSeller = {};
+
+    for (const stop of stops || []) {
+      const dop = stop.seller_dop;
+      const seller = cachedSellers.find(s => s.dop === dop);
+      const nome = seller ? seller.nome : `DOP ${dop}`;
+
+      if (!dadosPorSeller[nome]) {
+        dadosPorSeller[nome] = 0;
+      }
+      dadosPorSeller[nome] += stop.receita_estimada || 0;
+    }
+
+    const sellers = Object.keys(dadosPorSeller).map(nome => ({
+      nome,
+      receita: dadosPorSeller[nome]
+    }));
+
+    sellers.sort((a, b) => b.receita - a.receita);
+    const top10 = sellers.slice(0, 10);
+
+    const labels = top10.map(s => s.nome);
+    const data = top10.map(s => s.receita);
+
+    if (chartSellers) chartSellers.destroy();
+
+    const ctx = document.getElementById('chartSellers').getContext('2d');
+    chartSellers = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Receita',
+          data: data,
+          backgroundColor: 'rgba(59, 130, 246, 0.8)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'R$ ' + context.parsed.x.toFixed(2);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: {
+              color: '#94a3b8',
+              callback: function(value) {
+                return 'R$ ' + value.toFixed(0);
+              }
+            },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          },
+          y: {
+            ticks: { color: '#94a3b8' },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  // =========================
+  // GRÁFICO: MILK RUN VS SIMPLES
+  // =========================
+
+  async function renderizarGraficoMilkRun(rotas) {
+    const milkRuns = rotas.filter(r => r.is_milk_run);
+    const simples = rotas.filter(r => !r.is_milk_run);
+
+    const receitaMilk = milkRuns.reduce((sum, r) => sum + (r.receita_estimada || 0), 0);
+    const receitaSimples = simples.reduce((sum, r) => sum + (r.receita_estimada || 0), 0);
+
+    if (chartMilkRun) chartMilkRun.destroy();
+
+    const ctx = document.getElementById('chartMilkRun').getContext('2d');
+    chartMilkRun = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Quantidade', 'Receita Total'],
+        datasets: [
+          {
+            label: 'Milk Run',
+            data: [milkRuns.length, receitaMilk],
+            backgroundColor: 'rgba(251, 191, 36, 0.8)',
+            borderColor: 'rgba(251, 191, 36, 1)',
+            borderWidth: 2
+          },
+          {
+            label: 'Rota Simples',
+            data: [simples.length, receitaSimples],
+            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+            borderColor: 'rgba(16, 185, 129, 1)',
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: { color: '#e2e8f0' }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                if (context.dataIndex === 0) {
+                  return context.dataset.label + ': ' + context.parsed.y + ' rotas';
+                } else {
+                  return context.dataset.label + ': R$ ' + context.parsed.y.toFixed(2);
+                }
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { color: '#94a3b8' },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          },
+          x: {
+            ticks: { color: '#94a3b8' },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  // =========================
+  // GRÁFICO: PERFIL DE VEÍCULOS
+  // =========================
+
+  async function renderizarGraficoVeiculos(rotas) {
+    const tiposVeiculos = {
+      'VAN': 0,
+      'VUC': 0,
+      '3/4': 0,
+      'TOCO': 0,
+      'TRUCK': 0,
+      'CARRETA': 0
+    };
+
+    for (const rota of rotas) {
+      const tipo = rota.tipo_veiculo || 'Desconhecido';
+      if (tiposVeiculos[tipo] !== undefined) {
+        tiposVeiculos[tipo]++;
+      }
+    }
+
+    const labels = [];
+    const data = [];
+    const colors = [];
+
+    const coresVeiculos = {
+      'VAN': 'rgba(34, 197, 94, 0.8)',
+      'VUC': 'rgba(59, 130, 246, 0.8)',
+      '3/4': 'rgba(251, 191, 36, 0.8)',
+      'TOCO': 'rgba(168, 85, 247, 0.8)',
+      'TRUCK': 'rgba(239, 68, 68, 0.8)',
+      'CARRETA': 'rgba(236, 72, 153, 0.8)'
+    };
+
+    for (const [tipo, quantidade] of Object.entries(tiposVeiculos)) {
+      if (quantidade > 0) {
+        labels.push(tipo);
+        data.push(quantidade);
+        colors.push(coresVeiculos[tipo]);
+      }
+    }
+
+    if (chartVeiculos) chartVeiculos.destroy();
+
+    const ctx = document.getElementById('chartVeiculos').getContext('2d');
+    chartVeiculos = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.8', '1')),
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: '#e2e8f0',
+              padding: 15,
+              font: { size: 12 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const value = context.parsed;
+                const pct = ((value / total) * 100).toFixed(1);
+                return context.label + ': ' + value + ' rotas (' + pct + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // =========================
+  // HEATMAP OPERACIONAL
+  // =========================
+
+  async function renderizarHeatmap(rotas) {
+    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const dadosPorDia = [0, 0, 0, 0, 0, 0, 0];
+
+    for (const rota of rotas) {
+      const data = new Date(rota.data + 'T00:00:00');
+      const diaSemana = data.getDay();
+      dadosPorDia[diaSemana]++;
+    }
+
+    const maxRotas = Math.max(...dadosPorDia);
+
+    const container = $("heatmapContainer");
+    container.innerHTML = "";
+
+    for (let i = 0; i < 7; i++) {
+      const count = dadosPorDia[i];
+      const intensidade = maxRotas > 0 ? count / maxRotas : 0;
+
+      let bgColor = 'rgba(71, 85, 105, 0.3)';
+      if (intensidade > 0.7) bgColor = 'rgba(16, 185, 129, 0.9)';
+      else if (intensidade > 0.4) bgColor = 'rgba(251, 191, 36, 0.8)';
+      else if (intensidade > 0) bgColor = 'rgba(59, 130, 246, 0.6)';
+
+      const cell = document.createElement('div');
+      cell.className = 'heatmap-cell';
+      cell.style.backgroundColor = bgColor;
+      cell.innerHTML = `
+        <div class="font-bold text-lg">${diasSemana[i]}</div>
+        <div class="text-2xl font-bold mt-2">${count}</div>
+        <div class="text-xs text-slate-300 mt-1">rotas</div>
+      `;
+      container.appendChild(cell);
+    }
+  }
+
+  // =========================
+  // INSIGHTS AUTOMATIZADOS
+  // =========================
+
+  // =========================
+  // INSIGHTS AUTOMATIZADOS
+  // =========================
+
+  async function renderizarInsights(rotas, stops) {
+    const insights = [];
+
+    // Insight 1: Melhor motorista
+    const dadosPorMotorista = {};
+    for (const rota of rotas) {
+      const nome = rota.drivers?.name || "Sem motorista";
+      if (!dadosPorMotorista[nome]) {
+        dadosPorMotorista[nome] = { receita: 0, frete: 0 };
+      }
+      dadosPorMotorista[nome].receita += rota.receita_estimada || 0;
+      dadosPorMotorista[nome].frete += rota.frete_total || 0;
+    }
+
+    const motoristasOrdenados = Object.keys(dadosPorMotorista).map(nome => {
+      const d = dadosPorMotorista[nome];
+      const pct = d.receita > 0 ? (d.frete / d.receita) * 100 : 0;
+      return { nome, pct };
+    }).sort((a, b) => a.pct - b.pct);
+
+    if (motoristasOrdenados.length > 0) {
+      const melhor = motoristasOrdenados[0];
+      insights.push({
+        icone: '🏆',
+        cor: 'emerald',
+        titulo: 'Melhor Performance',
+        texto: `${melhor.nome} tem o menor % custo: ${melhor.pct.toFixed(2)}%`
+      });
+    }
+
+    // Insight 2: SOC com mais volume
+    const volumePorSOC = {};
+    for (const stop of stops || []) {
+      const rota = cachedRotas.find(r => r.id === stop.saida_id);
+      const soc = rota?.soc || "Desconhecido";
+      volumePorSOC[soc] = (volumePorSOC[soc] || 0) + (stop.volume_total || 0);
+    }
+
+    const socTop = Object.keys(volumePorSOC).sort((a, b) => volumePorSOC[b] - volumePorSOC[a])[0];
+    if (socTop) {
+      insights.push({
+        icone: '📍',
+        cor: 'cyan',
+        titulo: 'SOC Mais Ativo',
+        texto: `${socTop} concentra ${volumePorSOC[socTop].toFixed(0)} de volume total`
+      });
+    }
+
+    // Insight 3: Eficiência Milk Run
+    const milkRuns = rotas.filter(r => r.is_milk_run);
+    const simples = rotas.filter(r => !r.is_milk_run);
+
+    const custoMedioMilk = milkRuns.length > 0
+      ? milkRuns.reduce((sum, r) => sum + (r.rentabilidade_pct || 0), 0) / milkRuns.length
+      : 0;
+
+    const custoMedioSimples = simples.length > 0
+      ? simples.reduce((sum, r) => sum + (r.rentabilidade_pct || 0), 0) / simples.length
+      : 0;
+
+    if (milkRuns.length > 0 && simples.length > 0) {
+      if (custoMedioMilk < custoMedioSimples) {
+        insights.push({
+          icone: '🔄',
+          cor: 'amber',
+          titulo: 'Milk Run Mais Eficiente',
+          texto: `Milk Runs têm custo médio ${custoMedioMilk.toFixed(2)}% vs ${custoMedioSimples.toFixed(2)}% em rotas simples`
+        });
+      }
+    }
+
+    // Insight 4: Alerta de alto custo
+    const rotasAltas = rotas.filter(r => (r.rentabilidade_pct || 0) > 30);
+    if (rotasAltas.length > 0) {
+      insights.push({
+        icone: '⚠️',
+        cor: 'red',
+        titulo: 'Alerta: Rotas com Alto Custo',
+        texto: `${rotasAltas.length} rotas com % custo acima de 30% - revisar urgente`
+      });
+    }
+
+    // Renderizar insights
+    const container = $("insightsContainer");
+    container.innerHTML = "";
+
+    if (insights.length === 0) {
+      container.innerHTML = '<div class="text-slate-400 text-center py-4">Nenhum insight disponível no período</div>';
+      return;
+    }
+
+    for (const insight of insights) {
+      const div = document.createElement('div');
+      div.className = `p-4 rounded-lg bg-${insight.cor}-500/10 border border-${insight.cor}-500/30`;
+      div.innerHTML = `
+        <div class="flex items-start gap-3">
+          <div class="text-3xl">${insight.icone}</div>
+          <div class="flex-1">
+            <div class="font-bold text-${insight.cor}-300 mb-1">${insight.titulo}</div>
+            <div class="text-sm text-slate-300">${insight.texto}</div>
+          </div>
+        </div>
+      `;
+      container.appendChild(div);
+    }
+  }
+  boot();
+</script>
+<div style="position:fixed;bottom:20px;right:20px;background:#10b981;color:#064e3b;padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none">MODO DEMO</div></body>
+</html>
